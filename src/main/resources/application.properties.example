@@ -1,0 +1,4 @@
+db.url=jdbc:postgresql://localhost:5432/banking_system
+db.username=your_username
+db.password=your_password
+db.pool.maxSize=10
