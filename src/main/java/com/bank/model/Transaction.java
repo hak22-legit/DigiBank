@@ -18,15 +18,16 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Transaction {
-    private Integer transactionId;
-    private Integer accountId;
-    private Integer relatedAccountId;
-    private Integer categoryId;
+    private Long transactionId;
+    private Long accountId;
+    private Long relatedAccountId;
+    private Long categoryId;
     private TransactionType transactionType;
     private BigDecimal amount;
     private String currency;
     private String description;
-    private UUID idempotencyKey;
     private TransactionStatus status;
+    private UUID idempotencyKey;
     private LocalDateTime transactionDate;
+    private LocalDateTime createdAt;
 }

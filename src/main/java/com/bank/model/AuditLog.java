@@ -14,11 +14,11 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AuditLog {
-    private Integer logId;
-    private Integer adminId;
+    private Long logId;
+    private Long adminId;
     private String action;
     private String targetTable;
-    private Integer targetId;
+    private Long targetId;
     private String details;
     private String ipAddress;
     private LocalDateTime createdAt;

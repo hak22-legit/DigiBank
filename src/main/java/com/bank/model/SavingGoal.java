@@ -17,12 +17,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SavingGoal {
-    private Integer goalId;
-    private Integer userId;
-    private String goalName;
+    private Long goalId;
+    private Long userId;
+    private String name;
     private BigDecimal targetAmount;
     private BigDecimal currentAmount;
     private LocalDate deadline;
     private GoalStatus status;
+    private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

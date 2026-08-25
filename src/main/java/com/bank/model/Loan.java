@@ -1,6 +1,7 @@
 package com.bank.model;
 
 import com.bank.enums.LoanStatus;
+import com.bank.enums.RiskLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,9 +17,9 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Loan {
-    private Integer loanId;
-    private Integer userId;
-    private Integer approvedBy;
+    private Long loanId;
+    private Long userId;
+    private Long accountId;
     private BigDecimal requestedAmount;
     private BigDecimal approvedAmount;
     private BigDecimal interestRate;
@@ -28,8 +29,12 @@ public class Loan {
     private BigDecimal existingDebt;
     private Integer creditScore;
     private BigDecimal riskScore;
-    private String currency;
+    private RiskLevel riskLevel;
     private LoanStatus status;
+    private Long approvedBy;
+    private LocalDateTime approvedAt;
+    private String rejectionReason;
+    private BigDecimal outstandingBalance;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
