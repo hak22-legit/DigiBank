@@ -17,15 +17,16 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LoanPayment {
-    private Integer paymentId;
-    private Integer loanId;
-    private Integer accountId;
-    private Integer transactionId;
-    private BigDecimal amountPaid;
+    private Long paymentId;
+    private Long loanId;
+    private Long accountId;
+    private Long transactionId;
+    private BigDecimal amount;
     private BigDecimal principalAmount;
     private BigDecimal interestAmount;
     private LocalDateTime paymentDate;
     private LocalDate dueDate;
     private LoanPaymentStatus status;
     private String paymentMethod;
+    private LocalDateTime createdAt;
 }

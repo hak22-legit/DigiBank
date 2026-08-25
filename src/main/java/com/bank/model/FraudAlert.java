@@ -16,13 +16,16 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class FraudAlert {
-    private Integer alertId;
-    private Integer userId;
-    private Integer transactionId;
-    private Integer resolvedBy;
+    private Long alertId;
+    private Long userId;
+    private Long accountId;
+    private Long transactionId;
     private RiskLevel riskLevel;
-    private String reason;
+    private String description;
     private FraudStatus status;
-    private LocalDateTime createdAt;
+    private Long investigatedBy;
     private LocalDateTime resolvedAt;
+    private String resolutionNotes;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

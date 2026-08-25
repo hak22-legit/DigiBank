@@ -18,14 +18,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Budget {
-    private Integer budgetId;
-    private Integer userId;
-    private Integer categoryId;
-    private BigDecimal amount;
-    private String currency;
+    private Long budgetId;
+    private Long userId;
+    private Long categoryId;
+    private BigDecimal amountLimit;
+    private BudgetPeriod period;
     private LocalDate startDate;
     private LocalDate endDate;
-    private BudgetPeriod period;
     private BudgetStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
