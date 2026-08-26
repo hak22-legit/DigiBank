@@ -48,6 +48,29 @@ public class TransactionRepositoryImpl implements TransactionRepository {
     }
 
     @Override
+    public List<Transaction> findHistoryForAccount(Long accountId) {
+        String sql = """
+        SELECT * FROM transactions
+        WHERE account_id = ? OR related_account_id = ?
+        ORDER BY transaction_date DESC
+        """;
+        List<Transaction> transactions = new ArrayList<>();
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, accountId);
+            stmt.setLong(2, accountId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) transactions.add(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error finding transaction history for account: " + accountId, e);
+        }
+        return transactions;
+    }
+
+    @Override
     public List<Transaction> findByAccountId(Long accountId) {
         String sql = "SELECT * FROM transactions WHERE account_id = ? ORDER BY transaction_date DESC";
         List<Transaction> transactions = new ArrayList<>();

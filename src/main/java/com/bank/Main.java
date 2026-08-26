@@ -3,18 +3,14 @@ package com.bank;
 import com.bank.database.DatabaseConnection;
 import com.bank.enums.AccountType;
 import com.bank.enums.Currency;
-import com.bank.exception.AuthenticationException;
-import com.bank.exception.CurrencyMismatchException;
-import com.bank.exception.InsufficientBalanceException;
-import com.bank.exception.InvalidAmountException;
-import com.bank.model.Account;
-import com.bank.model.Category;
-import com.bank.model.Transaction;
-import com.bank.model.User;
+import com.bank.enums.HistoryFilter;
+import com.bank.exception.*;
+import com.bank.model.*;
 import com.bank.repository.*;
 import com.bank.security.SessionManager;
 import com.bank.service.AccountService;
 import com.bank.service.AuthService;
+import com.bank.service.TransactionService;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -22,17 +18,16 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public class Main {
     public static void main(String[] args) {
         System.out.println("========================================");
         System.out.println("  Enterprise Banking System");
-        System.out.println("  Phase 8 - Deposit (ACID + Currency)");
+        System.out.println("  Phase 9 - Withdrawal");
         System.out.println("========================================");
 
-        // ---------------------------------------------------
-        // Phase 3 - Connection sanity check
-        // ---------------------------------------------------
+        // Phase 3 - connection sanity check
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM categories")) {
@@ -46,134 +41,130 @@ public class Main {
             e.printStackTrace();
         }
 
-        // ---------------------------------------------------
-        // Phase 5 - Repository smoke tests
-        // ---------------------------------------------------
-        CategoryRepository catRepo = new CategoryRepositoryImpl();
-        List<Category> categories = catRepo.findAll();
-        System.out.println("Categories found: " + categories.size());
-
+        // Repositories
         UserRepository userRepo = new UserRepositoryImpl();
-        System.out.println("Users found: " + userRepo.findAll().size());
+        AccountRepository accountRepo = new AccountRepositoryImpl();
+        TransactionRepository transactionRepo = new TransactionRepositoryImpl();
 
-        LoanRepository loanRepo = new LoanRepositoryImpl();
-        System.out.println("Loans found: " + loanRepo.findAll().size());
+        // Services (note the new constructor wiring)
+        AccountService accountService = new AccountService(accountRepo, transactionRepo);
+        AuthService authService = new AuthService(userRepo, accountService);
 
-        BudgetRepository budgetRepo = new BudgetRepositoryImpl();
-        System.out.println("Budgets found: " + budgetRepo.findAll().size());
-
-        // ---------------------------------------------------
-        // Phase 6 - Authentication (idempotent test)
-        // ---------------------------------------------------
-        AuthService authService = new AuthService(userRepo);
-
+        // Phase 6 - Auth (idempotent test)
         User loggedIn;
         Optional<User> existing = userRepo.findByUsername("johndoe");
         if (existing.isEmpty()) {
             User newUser = authService.register(
                     "johndoe", "john@example.com", "SecurePass123", "John Doe", "0123456789");
             System.out.println("Registered: " + newUser.getUsername() + " (id=" + newUser.getUserId() + ")");
+            System.out.println("Default account auto-created on registration.");
         }
         loggedIn = authService.login("johndoe", "SecurePass123");
         System.out.println("Login success: " + loggedIn.getFullName());
-        System.out.println("Session active: " + SessionManager.isUserLoggedIn());
 
-        try {
-            authService.login("johndoe", "wrongpassword");
-        } catch (AuthenticationException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-        // ---------------------------------------------------
-        // Phase 7/8 - Account creation + Deposit
-        // ---------------------------------------------------
-        AccountRepository accountRepo = new AccountRepositoryImpl();
-        TransactionRepository transactionRepo = new TransactionRepositoryImpl();
-        AccountService accountService = new AccountService(accountRepo, transactionRepo);
-
-        Account account = accountService.createAccount(loggedIn, AccountType.SAVINGS, Currency.USD);
-        System.out.println("Created account: " + account.getAccountNumber()
-                + " | Currency: " + account.getCurrency()
-                + " | Balance: " + account.getBalance());
-
+        // Show all accounts for this user (should include the auto-created default account)
         List<Account> myAccounts = accountService.getAccountsForUser(loggedIn);
         System.out.println("Accounts for user: " + myAccounts.size());
+        for (Account acc : myAccounts) {
+            System.out.println("  - " + acc.getAccountNumber() + " | " + acc.getAccountType()
+                    + " | " + acc.getCurrency() + " | Balance: " + acc.getBalance());
+        }
 
-        // Successful deposit
+        // Use the first account (the default one) for deposit/withdraw tests
+        Account primaryAccount = myAccounts.get(0);
+
+        // Phase 8 - Deposit
         Transaction depositTxn = accountService.deposit(
-                account.getAccountId(),
-                new BigDecimal("500.00"),
-                Currency.USD,
-                "Initial deposit",
-                loggedIn
-        );
+                primaryAccount.getAccountId(), new BigDecimal("500.00"), Currency.USD,
+                "Initial deposit", loggedIn);
         System.out.println("Deposit successful: " + depositTxn.getAmount() + " " + depositTxn.getCurrency());
+        System.out.println("Balance after deposit: " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
 
-        BigDecimal newBalance = accountService.getBalance(account.getAccountId(), loggedIn);
-        System.out.println("New balance: " + newBalance);
-
-        // Deposit with null currency (should default to account's currency)
-        Transaction defaultCurrencyTxn = accountService.deposit(
-                account.getAccountId(),
-                new BigDecimal("100.00"),
-                null,
-                "Deposit with default currency",
-                loggedIn
-        );
-        System.out.println("Default-currency deposit: " + defaultCurrencyTxn.getAmount()
-                + " " + defaultCurrencyTxn.getCurrency());
-
-        // Currency mismatch (should fail)
-        try {
-            accountService.deposit(account.getAccountId(), new BigDecimal("100"), Currency.KHR, "test", loggedIn);
-        } catch (CurrencyMismatchException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-        // Invalid amount (should fail)
-        try {
-            accountService.deposit(account.getAccountId(), new BigDecimal("-50"), null, "test", loggedIn);
-        } catch (InvalidAmountException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-        BigDecimal finalBalance = accountService.getBalance(account.getAccountId(), loggedIn);
-        System.out.println("Final balance: " + finalBalance);
-
-        // ការដកប្រាក់ជោគជ័យ
+        // Phase 9 - Withdrawal
         Transaction withdrawTxn = accountService.withdraw(
-                account.getAccountId(),
-                new BigDecimal("200.00"),
-                Currency.USD,
-                "ATM withdrawal",
-                loggedIn
-        );
+                primaryAccount.getAccountId(), new BigDecimal("200.00"), Currency.USD,
+                "ATM withdrawal", loggedIn);
         System.out.println("Withdrawal successful: " + withdrawTxn.getAmount() + " " + withdrawTxn.getCurrency());
-        System.out.println("Balance after withdrawal: " + accountService.getBalance(account.getAccountId(), loggedIn));
+        System.out.println("Balance after withdrawal: " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
 
-// Balance មិនគ្រប់គ្រាន់ (គួរតែបរាជ័យ)
         try {
-            accountService.withdraw(account.getAccountId(), new BigDecimal("999999"), null, "test", loggedIn);
+            accountService.withdraw(primaryAccount.getAccountId(), new BigDecimal("999999"), null, "test", loggedIn);
         } catch (InsufficientBalanceException e) {
             System.out.println("Correctly rejected: " + e.getMessage());
         }
 
-// Amount មិនត្រឹមត្រូវ (គួរតែបរាជ័យ)
         try {
-            accountService.withdraw(account.getAccountId(), BigDecimal.ZERO, null, "test", loggedIn);
+            accountService.withdraw(primaryAccount.getAccountId(), BigDecimal.ZERO, null, "test", loggedIn);
         } catch (InvalidAmountException e) {
             System.out.println("Correctly rejected: " + e.getMessage());
         }
 
-        // ---------------------------------------------------
-        // Logout
-        // ---------------------------------------------------
+        Account secondAccount = accountService.createAccount(loggedIn, AccountType.SAVINGS, Currency.USD);
+        System.out.println("Second account created: " + secondAccount.getAccountNumber());
+
+        UUID transferKey = UUID.randomUUID();
+
+        Transaction transferTxn = accountService.transfer(
+                primaryAccount.getAccountId(),
+                secondAccount.getAccountId(),
+                new BigDecimal("100.00"),
+                Currency.USD,
+                "Move to savings",
+                transferKey,
+                loggedIn
+        );
+        System.out.println("Transfer successful: " + transferTxn.getAmount()
+                + " from account " + transferTxn.getAccountId() + " to " + transferTxn.getRelatedAccountId());
+
+        System.out.println("Primary balance: " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
+        System.out.println("Second balance: " + accountService.getBalance(secondAccount.getAccountId(), loggedIn));
+
+// ព្យាយាមម្តងទៀតជាមួយ idempotency key ដដែល - មិនគួរផ្ទេរម្តងទៀតទេ
+        Transaction retryTxn = accountService.transfer(
+                primaryAccount.getAccountId(), secondAccount.getAccountId(),
+                new BigDecimal("100.00"), Currency.USD, "Move to savings",
+                transferKey, loggedIn
+        );
+        System.out.println("Retry returned same transaction id: " + retryTxn.getTransactionId().equals(transferTxn.getTransactionId()));
+        System.out.println("Primary balance after retry (should be unchanged): " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
+
+// ផ្ទេរទៅ account ដដែល (គួរបរាជ័យ)
+        try {
+            accountService.transfer(primaryAccount.getAccountId(), primaryAccount.getAccountId(),
+                    new BigDecimal("10"), Currency.USD, "test", UUID.randomUUID(), loggedIn);
+        } catch (InvalidTransferException e) {
+            System.out.println("Correctly rejected: " + e.getMessage());
+        }
+
+// គ្មាន idempotency key (គួរបរាជ័យ)
+        try {
+            accountService.transfer(primaryAccount.getAccountId(), secondAccount.getAccountId(),
+                    new BigDecimal("10"), Currency.USD, "test", null, loggedIn);
+        } catch (InvalidTransferException e) {
+            System.out.println("Correctly rejected: " + e.getMessage());
+        }
+
+        TransactionService transactionService = new TransactionService(transactionRepo, accountRepo);
+
+        List<TransactionView> allHistory = transactionService.getTransactionHistory(
+                primaryAccount.getAccountId(), HistoryFilter.ALL, loggedIn);
+        System.out.println("All transactions for primary account: " + allHistory.size());
+        for (TransactionView v : allHistory) {
+            System.out.println("  [" + v.getDirection() + "] " + v.getTransaction().getTransactionType()
+                    + " " + v.getTransaction().getAmount() + " " + v.getTransaction().getCurrency());
+        }
+
+        List<TransactionView> incomeOnly = transactionService.getTransactionHistory(
+                primaryAccount.getAccountId(), HistoryFilter.INCOME, loggedIn);
+        System.out.println("Income only: " + incomeOnly.size());
+
+        List<TransactionView> outcomeOnly = transactionService.getTransactionHistory(
+                primaryAccount.getAccountId(), HistoryFilter.OUTCOME, loggedIn);
+        System.out.println("Outcome only: " + outcomeOnly.size());
+
         authService.logout();
         System.out.println("Session after logout: " + SessionManager.isUserLoggedIn());
 
-        // ---------------------------------------------------
-        // Pool shutdown MUST be the last thing that happens
-        // ---------------------------------------------------
         DatabaseConnection.closePool();
     }
 }

@@ -18,6 +18,8 @@ import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public class AccountService {
 
@@ -66,6 +68,132 @@ public class AccountService {
     public BigDecimal getBalance(Long accountId, User requestingUser) {
         Account account = getAccountById(accountId, requestingUser);
         return account.getBalance();
+    }
+
+    /**
+     * ផ្ទេរប្រាក់រវាង account ពីរ។
+     * ច្បាប់ធនាគារ៖
+     *  - amount > 0 និង <= MAX_TRANSACTION_AMOUNT
+     *  - account អ្នកផ្ញើ និងអ្នកទទួល ត្រូវតែផ្សេងគ្នា
+     *  - account អ្នកផ្ញើ ត្រូវជាកម្មសិទ្ធិរបស់ user ដែលស្នើសុំ (account អ្នកទទួល ជាកម្មសិទ្ធិអ្នកណាក៏បាន)
+     *  - account ទាំងពីរត្រូវជា ACTIVE
+     *  - account ទាំងពីរត្រូវប្រើ currency ដូចគ្នា (គ្មាន conversion)
+     *  - balance គ្រប់គ្រាន់លើ sender (គ្មាន overdraft)
+     *  - idempotency: caller ត្រូវតែផ្តល់ UUID; ការព្យាយាមម្តងទៀតជាមួយ key ដដែល
+     *    នឹងត្រឡប់ transaction ដើមវិញ ជំនួសឱ្យផ្ទេរម្តងទៀត
+     *  - deterministic lock ordering (lock account_id តូចជាងមុន) ដើម្បីជៀសវាង deadlock
+     *    ពេលមានការផ្ទេររវាង account ពីរដូចគ្នា កើតឡើងក្នុងពេលដំណាលគ្នា
+     * ACID: lock account ទាំងពីរ -> validate -> debit sender -> credit receiver ->
+     *       insert transaction record តែមួយ -> commit/rollback
+     */
+    public Transaction transfer(Long senderAccountId, Long receiverAccountId, BigDecimal amount,
+                                Currency requestCurrency, String description,
+                                UUID idempotencyKey, User requestingUser) {
+
+        if (idempotencyKey == null) {
+            throw new InvalidTransferException("Idempotency key is required for transfers");
+        }
+        if (senderAccountId.equals(receiverAccountId)) {
+            throw new InvalidTransferException("Cannot transfer to the same account");
+        }
+        validateAmount(amount);
+
+        // ការត្រួតពិនិត្យ idempotency: បើ request ដូចនេះធ្លាប់ដំណើរការរួចហើយ ត្រឡប់លទ្ធផលចាស់វិញ
+        Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        // Lock ត្រឹមត្រូវតាមលំដាប់៖ lock account_id តូចជាងជានិច្ចមុនគេ
+        // នេះជាមូលហេតុជៀសវាង deadlock ពេល Transfer A (X->Y) និង Transfer B (Y->X)
+        // ដំណើរការក្នុងពេលដំណាលគ្នា - ទាំងពីរនឹងព្យាយាម lock តាមលំដាប់ដូចគ្នា
+        Long firstLockId = Math.min(senderAccountId, receiverAccountId);
+        Long secondLockId = Math.max(senderAccountId, receiverAccountId);
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            Account firstLocked = accountRepository.findByIdForUpdate(conn, firstLockId)
+                    .orElseThrow(() -> new AccountNotFoundException("Account not found: " + firstLockId));
+            Account secondLocked = accountRepository.findByIdForUpdate(conn, secondLockId)
+                    .orElseThrow(() -> new AccountNotFoundException("Account not found: " + secondLockId));
+
+            // ត្រឡប់ទៅតួនាទី sender/receiver វិញ ទោះបីជា lock តាមលំដាប់ណាក៏ដោយ
+            Account sender = senderAccountId.equals(firstLockId) ? firstLocked : secondLocked;
+            Account receiver = senderAccountId.equals(firstLockId) ? secondLocked : firstLocked;
+
+            assertOwnership(sender, requestingUser);
+            assertActive(sender);
+            assertActive(receiver);
+            assertSameCurrency(sender, receiver);
+
+            Currency effectiveCurrency = resolveCurrency(requestCurrency, sender.getCurrency());
+
+            if (sender.getBalance().compareTo(amount) < 0) {
+                throw new InsufficientBalanceException(
+                        "Insufficient balance: available " + sender.getBalance() + ", requested " + amount);
+            }
+
+            sender.setBalance(sender.getBalance().subtract(amount));
+            receiver.setBalance(receiver.getBalance().add(amount));
+
+            accountRepository.updateWithConnection(conn, sender);
+            accountRepository.updateWithConnection(conn, receiver);
+
+            Transaction transaction = Transaction.builder()
+                    .accountId(sender.getAccountId())
+                    .relatedAccountId(receiver.getAccountId())
+                    .transactionType(TransactionType.TRANSFER)
+                    .amount(amount)
+                    .currency(effectiveCurrency)
+                    .description(description)
+                    .status(TransactionStatus.COMPLETED)
+                    .idempotencyKey(idempotencyKey)
+                    .build();
+
+            transaction = transactionRepository.saveWithConnection(conn, transaction);
+
+            conn.commit();
+            return transaction;
+
+        } catch (RuntimeException | SQLException e) {
+            rollbackQuietly(conn);
+
+            // ការការពារ race condition៖ បើ request ដំណាលគ្នា ២ ប្រើ idempotency key ដូចគ្នា
+            // មួយ commit មុន ម្យ៉ាងទៀតប៉ះ UNIQUE constraint នៅ DB level
+            // ជំនួសឱ្យបោះ error ដ៏គួរឱ្យខ្លាច យើងចាប់វា ហើយត្រឡប់ transaction
+            // ដែល request ដទៃបានបង្កើតរួចហើយ
+            if (isUniqueViolation(e)) {
+                return transactionRepository.findByIdempotencyKey(idempotencyKey)
+                        .orElseThrow(() -> new RuntimeException("Transfer failed and could not recover", e));
+            }
+
+            if (e instanceof RuntimeException re) throw re;
+            throw new RuntimeException("Transfer failed", e);
+        } finally {
+            closeQuietly(conn);
+        }
+    }
+
+    private void assertSameCurrency(Account sender, Account receiver) {
+        if (sender.getCurrency() != receiver.getCurrency()) {
+            throw new CurrencyMismatchException(
+                    "Cannot transfer between accounts with different currencies: "
+                            + sender.getCurrency() + " -> " + receiver.getCurrency());
+        }
+    }
+
+    private boolean isUniqueViolation(Exception e) {
+        Throwable cause = e;
+        while (cause != null) {
+            if (cause instanceof SQLException sqlEx && "23505".equals(sqlEx.getSQLState())) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     /**

@@ -15,6 +15,7 @@ public interface TransactionRepository {
     List<Transaction> findByAccountId(Long accountId);
     List<Transaction> findByAccountIdAndDateRange(Long accountId, LocalDateTime from, LocalDateTime to);
     List<Transaction> findAll();
+    List<Transaction> findHistoryForAccount(Long accountId);
     Transaction save(Transaction transaction);
 
     /**

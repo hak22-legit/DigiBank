@@ -1,5 +1,7 @@
 package com.bank.service;
 
+import com.bank.enums.AccountType;
+import com.bank.enums.Currency;
 import com.bank.enums.UserStatus;
 import com.bank.exception.AuthenticationException;
 import com.bank.exception.DuplicateResourceException;
@@ -8,14 +10,14 @@ import com.bank.repository.UserRepository;
 import com.bank.security.PasswordHasher;
 import com.bank.security.SessionManager;
 
-import java.util.Optional;
-
 public class AuthService {
 
     private final UserRepository userRepository;
+    private final AccountService accountService;
 
-    public AuthService(UserRepository userRepository) {
+    public AuthService(UserRepository userRepository, AccountService accountService) {
         this.userRepository = userRepository;
+        this.accountService = accountService;
     }
 
     public User register(String username, String email, String password, String fullName, String phone) {
@@ -35,7 +37,13 @@ public class AuthService {
                 .status(UserStatus.ACTIVE)
                 .build();
 
-        return userRepository.save(user);
+        User savedUser = userRepository.save(user);
+
+        // Default account created automatically on registration.
+        // Users can create additional accounts (e.g. SAVINGS, KHR) themselves after logging in.
+        accountService.createAccount(savedUser, AccountType.CHECKING, Currency.USD);
+
+        return savedUser;
     }
 
     public User login(String username, String password) {
