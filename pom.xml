@@ -158,9 +158,9 @@
                 <artifactId>flyway-maven-plugin</artifactId>
                 <version>10.18.0</version>
                 <configuration>
-                    <url>jdbc:postgresql://ep-dark-smoke-azma18g2-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require</url>
-                    <user>neondb_owner</user>
-                    <password>npg_Cn7vVHGKUAR5</password>D
+                    <configFiles>
+                        <configFile>src/main/resources/application.properties</configFile>
+                    </configFiles>
                 </configuration>
             </plugin>
         </plugins>
