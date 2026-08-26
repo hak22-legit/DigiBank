@@ -1,5 +1,6 @@
 package com.bank.model;
 
+import com.bank.enums.Currency;
 import com.bank.enums.TransactionStatus;
 import com.bank.enums.TransactionType;
 import lombok.AllArgsConstructor;
@@ -24,7 +25,7 @@ public class Transaction {
     private Long categoryId;
     private TransactionType transactionType;
     private BigDecimal amount;
-    private String currency;
+    private Currency currency;
     private String description;
     private TransactionStatus status;
     private UUID idempotencyKey;

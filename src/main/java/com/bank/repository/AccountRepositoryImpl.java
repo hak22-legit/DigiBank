@@ -3,6 +3,7 @@ package com.bank.repository;
 import com.bank.database.DatabaseConnection;
 import com.bank.enums.AccountStatus;
 import com.bank.enums.AccountType;
+import com.bank.enums.Currency;
 import com.bank.model.Account;
 
 import java.sql.*;
@@ -100,7 +101,7 @@ public class AccountRepositoryImpl implements AccountRepository {
             stmt.setString(2, account.getAccountNumber());
             stmt.setString(3, account.getAccountType().name());
             stmt.setBigDecimal(4, account.getBalance());
-            stmt.setString(5, account.getCurrency());
+            stmt.setString(5, account.getCurrency().name());
             stmt.setString(6, account.getStatus().name());
             stmt.setTimestamp(7, Timestamp.valueOf(now));
             stmt.setTimestamp(8, Timestamp.valueOf(now));
@@ -193,7 +194,7 @@ public class AccountRepositoryImpl implements AccountRepository {
                 .accountNumber(rs.getString("account_number"))
                 .accountType(AccountType.valueOf(rs.getString("account_type")))
                 .balance(rs.getBigDecimal("balance"))
-                .currency(rs.getString("currency"))
+                .currency(Currency.valueOf(rs.getString("currency")))
                 .status(AccountStatus.valueOf(rs.getString("status")))
                 .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                 .updatedAt(rs.getTimestamp("updated_at").toLocalDateTime())
