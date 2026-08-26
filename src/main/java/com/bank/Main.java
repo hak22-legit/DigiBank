@@ -5,6 +5,7 @@ import com.bank.enums.AccountType;
 import com.bank.enums.Currency;
 import com.bank.exception.AuthenticationException;
 import com.bank.exception.CurrencyMismatchException;
+import com.bank.exception.InsufficientBalanceException;
 import com.bank.exception.InvalidAmountException;
 import com.bank.model.Account;
 import com.bank.model.Category;
@@ -138,6 +139,31 @@ public class Main {
 
         BigDecimal finalBalance = accountService.getBalance(account.getAccountId(), loggedIn);
         System.out.println("Final balance: " + finalBalance);
+
+        // ការដកប្រាក់ជោគជ័យ
+        Transaction withdrawTxn = accountService.withdraw(
+                account.getAccountId(),
+                new BigDecimal("200.00"),
+                Currency.USD,
+                "ATM withdrawal",
+                loggedIn
+        );
+        System.out.println("Withdrawal successful: " + withdrawTxn.getAmount() + " " + withdrawTxn.getCurrency());
+        System.out.println("Balance after withdrawal: " + accountService.getBalance(account.getAccountId(), loggedIn));
+
+// Balance មិនគ្រប់គ្រាន់ (គួរតែបរាជ័យ)
+        try {
+            accountService.withdraw(account.getAccountId(), new BigDecimal("999999"), null, "test", loggedIn);
+        } catch (InsufficientBalanceException e) {
+            System.out.println("Correctly rejected: " + e.getMessage());
+        }
+
+// Amount មិនត្រឹមត្រូវ (គួរតែបរាជ័យ)
+        try {
+            accountService.withdraw(account.getAccountId(), BigDecimal.ZERO, null, "test", loggedIn);
+        } catch (InvalidAmountException e) {
+            System.out.println("Correctly rejected: " + e.getMessage());
+        }
 
         // ---------------------------------------------------
         // Logout

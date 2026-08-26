@@ -18,11 +18,10 @@ import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
-import java.util.Optional;
 
 public class AccountService {
 
-    private static final BigDecimal MAX_DEPOSIT_AMOUNT = new BigDecimal("1000000");
+    private static final BigDecimal MAX_TRANSACTION_AMOUNT = new BigDecimal("1000000");
 
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
@@ -70,14 +69,7 @@ public class AccountService {
     }
 
     /**
-     * Deposit money into an account.
-     * Business rules:
-     *  - amount > 0 and <= MAX_DEPOSIT_AMOUNT
-     *  - account must exist and be ACTIVE
-     *  - requesting user must own the account
-     *  - if requestCurrency is null, defaults to the account's own currency
-     *  - if requestCurrency is provided and doesn't match the account's currency -> reject
-     * ACID: SELECT FOR UPDATE lock -> update balance -> insert transaction -> commit/rollback
+     * Deposit money into an account. See Phase 8 for full rule explanation.
      */
     public Transaction deposit(Long accountId, BigDecimal amount, Currency requestCurrency,
                                String description, User requestingUser) {
@@ -89,24 +81,17 @@ public class AccountService {
             conn = DatabaseConnection.getConnection();
             conn.setAutoCommit(false);
 
-            // Lock the account row for the duration of this transaction
             Account account = accountRepository.findByIdForUpdate(conn, accountId)
                     .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId));
 
             assertOwnership(account, requestingUser);
-
-            if (account.getStatus() != AccountStatus.ACTIVE) {
-                throw new AccountNotActiveException(
-                        "Cannot deposit: account status is " + account.getStatus());
-            }
+            assertActive(account);
 
             Currency effectiveCurrency = resolveCurrency(requestCurrency, account.getCurrency());
 
-            // Update balance
             account.setBalance(account.getBalance().add(amount));
             accountRepository.updateWithConnection(conn, account);
 
-            // Insert transaction record
             Transaction transaction = Transaction.builder()
                     .accountId(account.getAccountId())
                     .transactionType(TransactionType.DEPOSIT)
@@ -130,13 +115,78 @@ public class AccountService {
         }
     }
 
+    /**
+     * Withdraw money from an account.
+     * ច្បាប់ធនាគារ៖
+     *  - amount > 0 និង <= MAX_TRANSACTION_AMOUNT
+     *  - account ត្រូវតែមាន, ជា ACTIVE, ជាកម្មសិទ្ធិរបស់ user ដែលស្នើសុំ
+     *  - ត្រូវការ balance គ្រប់គ្រាន់ (គ្មាន overdraft)
+     *  - currency resolution ដូច deposit (default ទៅ account currency, បដិសេធបើមិនត្រូវគ្នា)
+     * ACID: SELECT FOR UPDATE lock -> ត្រួតពិនិត្យ balance -> update balance -> insert transaction -> commit/rollback
+     */
+    public Transaction withdraw(Long accountId, BigDecimal amount, Currency requestCurrency,
+                                String description, User requestingUser) {
+
+        validateAmount(amount);
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            Account account = accountRepository.findByIdForUpdate(conn, accountId)
+                    .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId));
+
+            assertOwnership(account, requestingUser);
+            assertActive(account);
+
+            Currency effectiveCurrency = resolveCurrency(requestCurrency, account.getCurrency());
+
+            if (account.getBalance().compareTo(amount) < 0) {
+                throw new InsufficientBalanceException(
+                        "Insufficient balance: available " + account.getBalance() + ", requested " + amount);
+            }
+
+            account.setBalance(account.getBalance().subtract(amount));
+            accountRepository.updateWithConnection(conn, account);
+
+            Transaction transaction = Transaction.builder()
+                    .accountId(account.getAccountId())
+                    .transactionType(TransactionType.WITHDRAWAL)
+                    .amount(amount)
+                    .currency(effectiveCurrency)
+                    .description(description)
+                    .status(TransactionStatus.COMPLETED)
+                    .build();
+
+            transaction = transactionRepository.saveWithConnection(conn, transaction);
+
+            conn.commit();
+            return transaction;
+
+        } catch (RuntimeException | SQLException e) {
+            rollbackQuietly(conn);
+            if (e instanceof RuntimeException re) throw re;
+            throw new RuntimeException("Withdrawal failed", e);
+        } finally {
+            closeQuietly(conn);
+        }
+    }
+
     private void validateAmount(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new InvalidAmountException("Deposit amount must be greater than zero");
+            throw new InvalidAmountException("Amount must be greater than zero");
         }
-        if (amount.compareTo(MAX_DEPOSIT_AMOUNT) > 0) {
+        if (amount.compareTo(MAX_TRANSACTION_AMOUNT) > 0) {
             throw new InvalidAmountException(
-                    "Deposit amount exceeds maximum allowed (" + MAX_DEPOSIT_AMOUNT + ")");
+                    "Amount exceeds maximum allowed (" + MAX_TRANSACTION_AMOUNT + ")");
+        }
+    }
+
+    private void assertActive(Account account) {
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new AccountNotActiveException(
+                    "Operation not allowed: account status is " + account.getStatus());
         }
     }
 
@@ -162,7 +212,7 @@ public class AccountService {
             try {
                 conn.rollback();
             } catch (SQLException ignored) {
-                // logging will be added properly in Phase 25
+                // logging ត្រឹមត្រូវនឹងបន្ថែមនៅ Phase 25
             }
         }
     }
@@ -173,7 +223,7 @@ public class AccountService {
                 conn.setAutoCommit(true);
                 conn.close();
             } catch (SQLException ignored) {
-                // logging will be added properly in Phase 25
+                // logging ត្រឹមត្រូវនឹងបន្ថែមនៅ Phase 25
             }
         }
     }
