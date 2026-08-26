@@ -1,6 +1,7 @@
 package com.bank.repository;
 
 import com.bank.database.DatabaseConnection;
+import com.bank.enums.Currency;
 import com.bank.enums.TransactionStatus;
 import com.bank.enums.TransactionType;
 import com.bank.model.Transaction;
@@ -126,8 +127,6 @@ public class TransactionRepositoryImpl implements TransactionRepository {
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             LocalDateTime now = LocalDateTime.now();
 
-            // ជម្រើស B: បើគ្មាន idempotency key ត្រូវបានផ្តល់ (deposit/withdrawal),
-            // បង្កើត UUID ដោយស្វ័យប្រវត្តិដើម្បីបំពេញ NOT NULL constraint
             UUID key = transaction.getIdempotencyKey() != null
                     ? transaction.getIdempotencyKey()
                     : UUID.randomUUID();
@@ -146,7 +145,7 @@ public class TransactionRepositoryImpl implements TransactionRepository {
             }
             stmt.setString(4, transaction.getTransactionType().name());
             stmt.setBigDecimal(5, transaction.getAmount());
-            stmt.setString(6, transaction.getCurrency());
+            stmt.setString(6, transaction.getCurrency().name());
             stmt.setString(7, transaction.getDescription());
             stmt.setString(8, transaction.getStatus().name());
             stmt.setObject(9, key);
@@ -177,7 +176,7 @@ public class TransactionRepositoryImpl implements TransactionRepository {
                 .categoryId(categoryId)
                 .transactionType(TransactionType.valueOf(rs.getString("transaction_type")))
                 .amount(rs.getBigDecimal("amount"))
-                .currency(rs.getString("currency"))
+                .currency(Currency.valueOf(rs.getString("currency")))
                 .description(rs.getString("description"))
                 .status(TransactionStatus.valueOf(rs.getString("status")))
                 .idempotencyKey((UUID) rs.getObject("idempotency_key"))

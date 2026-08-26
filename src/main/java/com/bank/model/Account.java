@@ -2,6 +2,7 @@ package com.bank.model;
 
 import com.bank.enums.AccountStatus;
 import com.bank.enums.AccountType;
+import com.bank.enums.Currency;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,7 +21,7 @@ public class Account {
     private String accountNumber;
     private AccountType accountType;
     private BigDecimal balance;
-    private String currency;
+    private Currency currency;
     private AccountStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
