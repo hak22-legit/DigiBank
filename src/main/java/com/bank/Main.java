@@ -115,6 +115,31 @@ public class Main {
         System.out.println("Highest spending category: " +
                 insights.getHighestSpendingCategory().orElse("No categorized expenses yet"));
 
+        BudgetRepository budgetRepo = new BudgetRepositoryImpl();
+        BudgetService budgetService = new BudgetService(budgetRepo, accountRepo, transactionService, categoryService);
+
+// រក category "Food" ដែលជា system category
+        Category food = categoryService.getVisibleCategories(loggedIn).stream()
+                .filter(c -> c.getName().equals("Food")).findFirst().orElseThrow();
+
+        Budget foodBudget = budgetService.createBudget(
+                loggedIn, food.getCategoryId(), new BigDecimal("200"),
+                com.bank.enums.BudgetPeriod.MONTHLY,
+                java.time.LocalDate.now().withDayOfMonth(1),
+                java.time.LocalDate.now());
+
+        System.out.println("Budget created: " + foodBudget.getAmountLimit() + " for category " + food.getName());
+
+// ដកប្រាក់ជាមួយ category Food ដើម្បីសាកល្បង usage
+        accountService.withdraw(primaryAccount.getAccountId(), new BigDecimal("170"),
+                Currency.USD, "Groceries", food.getCategoryId(), loggedIn);
+
+        BudgetView view = budgetService.getBudgetUsage(foodBudget.getBudgetId(), loggedIn);
+        System.out.println("Actual spending: " + view.getActualSpending());
+        System.out.println("Usage: " + view.getUsagePercentage() + "%");
+        System.out.println("Status: " + view.getStatus());
+        System.out.println("Remaining: " + view.getRemainingAmount());
+
         // =====================================================
         // End of test code
         // =====================================================
