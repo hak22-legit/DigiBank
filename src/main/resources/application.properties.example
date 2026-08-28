@@ -1,4 +1,14 @@
-db.url=jdbc:postgresql://localhost:5432/banking_system
+app.name=Enterprise Banking System
+app.version=1.0-SNAPSHOT
+
+db.url=jdbc:postgresql://your-host/your-db?sslmode=require&channel_binding=require
 db.username=your_username
 db.password=your_password
-db.pool.maxSize=10
+db.driver=org.postgresql.Driver
+
+db.pool.size=10
+db.pool.maxLifetime=30
+
+flyway.url=jdbc:postgresql://your-host/your-db?sslmode=require&channel_binding=require
+flyway.user=your_username
+flyway.password=your_password
