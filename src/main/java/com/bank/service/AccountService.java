@@ -200,7 +200,7 @@ public class AccountService {
      * Deposit money into an account. See Phase 8 for full rule explanation.
      */
     public Transaction deposit(Long accountId, BigDecimal amount, Currency requestCurrency,
-                               String description, User requestingUser) {
+                               String description, Long categoryId, User requestingUser) {
 
         validateAmount(amount);
 
@@ -226,6 +226,7 @@ public class AccountService {
                     .amount(amount)
                     .currency(effectiveCurrency)
                     .description(description)
+                    .categoryId(categoryId)   // បន្ថែមបន្ទាត់នេះ
                     .status(TransactionStatus.COMPLETED)
                     .build();
 
@@ -253,7 +254,7 @@ public class AccountService {
      * ACID: SELECT FOR UPDATE lock -> ត្រួតពិនិត្យ balance -> update balance -> insert transaction -> commit/rollback
      */
     public Transaction withdraw(Long accountId, BigDecimal amount, Currency requestCurrency,
-                                String description, User requestingUser) {
+                                String description, Long categoryId, User requestingUser) {
 
         validateAmount(amount);
 
@@ -284,6 +285,7 @@ public class AccountService {
                     .amount(amount)
                     .currency(effectiveCurrency)
                     .description(description)
+                    .categoryId(categoryId)   // បន្ថែមបន្ទាត់នេះ
                     .status(TransactionStatus.COMPLETED)
                     .build();
 

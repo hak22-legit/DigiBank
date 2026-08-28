@@ -8,10 +8,7 @@ import com.bank.exception.*;
 import com.bank.model.*;
 import com.bank.repository.*;
 import com.bank.security.SessionManager;
-import com.bank.service.AccountService;
-import com.bank.service.AuthService;
-import com.bank.service.CategoryService;
-import com.bank.service.TransactionService;
+import com.bank.service.*;
 
 import java.math.BigDecimal;
 import java.sql.Connection;
@@ -25,10 +22,12 @@ public class Main {
     public static void main(String[] args) {
         System.out.println("========================================");
         System.out.println("  Enterprise Banking System");
-        System.out.println("  Phase 9 - Withdrawal");
+        System.out.println("  Phase 1-12 Smoke Test");
         System.out.println("========================================");
 
-        // Phase 3 - connection sanity check
+        // ---------------------------------------------------
+        // Connection sanity check
+        // ---------------------------------------------------
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM categories")) {
@@ -42,16 +41,25 @@ public class Main {
             e.printStackTrace();
         }
 
+        // ---------------------------------------------------
         // Repositories
+        // ---------------------------------------------------
         UserRepository userRepo = new UserRepositoryImpl();
         AccountRepository accountRepo = new AccountRepositoryImpl();
         TransactionRepository transactionRepo = new TransactionRepositoryImpl();
+        CategoryRepository categoryRepo = new CategoryRepositoryImpl();
 
-        // Services (note the new constructor wiring)
+        // ---------------------------------------------------
+        // Services
+        // ---------------------------------------------------
         AccountService accountService = new AccountService(accountRepo, transactionRepo);
         AuthService authService = new AuthService(userRepo, accountService);
+        TransactionService transactionService = new TransactionService(transactionRepo, accountRepo);
+        CategoryService categoryService = new CategoryService(categoryRepo);
 
-        // Phase 6 - Auth (idempotent test)
+        // ---------------------------------------------------
+        // Auth (idempotent - won't re-register if user exists)
+        // ---------------------------------------------------
         User loggedIn;
         Optional<User> existing = userRepo.findByUsername("johndoe");
         if (existing.isEmpty()) {
@@ -63,132 +71,57 @@ public class Main {
         loggedIn = authService.login("johndoe", "SecurePass123");
         System.out.println("Login success: " + loggedIn.getFullName());
 
-        // Show all accounts for this user (should include the auto-created default account)
+        // ---------------------------------------------------
+        // Accounts overview
+        // ---------------------------------------------------
         List<Account> myAccounts = accountService.getAccountsForUser(loggedIn);
         System.out.println("Accounts for user: " + myAccounts.size());
         for (Account acc : myAccounts) {
             System.out.println("  - " + acc.getAccountNumber() + " | " + acc.getAccountType()
                     + " | " + acc.getCurrency() + " | Balance: " + acc.getBalance());
         }
-
-        // Use the first account (the default one) for deposit/withdraw tests
         Account primaryAccount = myAccounts.get(0);
 
-        // Phase 8 - Deposit
-        Transaction depositTxn = accountService.deposit(
-                primaryAccount.getAccountId(), new BigDecimal("500.00"), Currency.USD,
-                "Initial deposit", loggedIn);
-        System.out.println("Deposit successful: " + depositTxn.getAmount() + " " + depositTxn.getCurrency());
-        System.out.println("Balance after deposit: " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
+        // ---------------------------------------------------
+        // Categories overview (Phase 12)
+        // ---------------------------------------------------
+        List<Category> visibleCategories = categoryService.getVisibleCategories(loggedIn);
+        System.out.println("Visible categories: " + visibleCategories.size());
 
-        // Phase 9 - Withdrawal
-        Transaction withdrawTxn = accountService.withdraw(
-                primaryAccount.getAccountId(), new BigDecimal("200.00"), Currency.USD,
-                "ATM withdrawal", loggedIn);
-        System.out.println("Withdrawal successful: " + withdrawTxn.getAmount() + " " + withdrawTxn.getCurrency());
-        System.out.println("Balance after withdrawal: " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
-
-        try {
-            accountService.withdraw(primaryAccount.getAccountId(), new BigDecimal("999999"), null, "test", loggedIn);
-        } catch (InsufficientBalanceException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-        try {
-            accountService.withdraw(primaryAccount.getAccountId(), BigDecimal.ZERO, null, "test", loggedIn);
-        } catch (InvalidAmountException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-        Account secondAccount = accountService.createAccount(loggedIn, AccountType.SAVINGS, Currency.USD);
-        System.out.println("Second account created: " + secondAccount.getAccountNumber());
-
-        UUID transferKey = UUID.randomUUID();
-
-        Transaction transferTxn = accountService.transfer(
-                primaryAccount.getAccountId(),
-                secondAccount.getAccountId(),
-                new BigDecimal("100.00"),
-                Currency.USD,
-                "Move to savings",
-                transferKey,
-                loggedIn
-        );
-        System.out.println("Transfer successful: " + transferTxn.getAmount()
-                + " from account " + transferTxn.getAccountId() + " to " + transferTxn.getRelatedAccountId());
-
-        System.out.println("Primary balance: " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
-        System.out.println("Second balance: " + accountService.getBalance(secondAccount.getAccountId(), loggedIn));
-
-// ព្យាយាមម្តងទៀតជាមួយ idempotency key ដដែល - មិនគួរផ្ទេរម្តងទៀតទេ
-        Transaction retryTxn = accountService.transfer(
-                primaryAccount.getAccountId(), secondAccount.getAccountId(),
-                new BigDecimal("100.00"), Currency.USD, "Move to savings",
-                transferKey, loggedIn
-        );
-        System.out.println("Retry returned same transaction id: " + retryTxn.getTransactionId().equals(transferTxn.getTransactionId()));
-        System.out.println("Primary balance after retry (should be unchanged): " + accountService.getBalance(primaryAccount.getAccountId(), loggedIn));
-
-// ផ្ទេរទៅ account ដដែល (គួរបរាជ័យ)
-        try {
-            accountService.transfer(primaryAccount.getAccountId(), primaryAccount.getAccountId(),
-                    new BigDecimal("10"), Currency.USD, "test", UUID.randomUUID(), loggedIn);
-        } catch (InvalidTransferException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-// គ្មាន idempotency key (គួរបរាជ័យ)
-        try {
-            accountService.transfer(primaryAccount.getAccountId(), secondAccount.getAccountId(),
-                    new BigDecimal("10"), Currency.USD, "test", null, loggedIn);
-        } catch (InvalidTransferException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-        TransactionService transactionService = new TransactionService(transactionRepo, accountRepo);
-
-        List<TransactionView> allHistory = transactionService.getTransactionHistory(
+        // ---------------------------------------------------
+        // Transaction history snapshot (Phase 11)
+        // ---------------------------------------------------
+        List<TransactionView> history = transactionService.getTransactionHistory(
                 primaryAccount.getAccountId(), HistoryFilter.ALL, loggedIn);
-        System.out.println("All transactions for primary account: " + allHistory.size());
-        for (TransactionView v : allHistory) {
-            System.out.println("  [" + v.getDirection() + "] " + v.getTransaction().getTransactionType()
-                    + " " + v.getTransaction().getAmount() + " " + v.getTransaction().getCurrency());
-        }
+        System.out.println("Transaction history for primary account: " + history.size() + " entries");
 
-        List<TransactionView> incomeOnly = transactionService.getTransactionHistory(
-                primaryAccount.getAccountId(), HistoryFilter.INCOME, loggedIn);
-        System.out.println("Income only: " + incomeOnly.size());
+        BigDecimal currentBalance = accountService.getBalance(primaryAccount.getAccountId(), loggedIn);
+        System.out.println("Current primary balance: " + currentBalance);
 
-        List<TransactionView> outcomeOnly = transactionService.getTransactionHistory(
-                primaryAccount.getAccountId(), HistoryFilter.OUTCOME, loggedIn);
-        System.out.println("Outcome only: " + outcomeOnly.size());
+        // =====================================================
+        // PHASE 13+ TEST CODE GOES BELOW THIS LINE
+        // =====================================================
 
-        CategoryService categoryService = new CategoryService(new CategoryRepositoryImpl());
+        FinancialInsightsService insightsService = new FinancialInsightsService(
+                accountRepo, transactionService, categoryService);
 
-        List<Category> visible = categoryService.getVisibleCategories(loggedIn);
-        System.out.println("Visible categories for johndoe: " + visible.size()); // គួរបាន 8 (system only, គ្មាន custom នៅឡើយ)
+        FinancialInsights insights = insightsService.getCurrentMonthInsights(loggedIn);
+        System.out.println("=== Financial Insights (This Month) ===");
+        System.out.println("Total balance: " + insights.getTotalBalance());
+        System.out.println("Total income: " + insights.getTotalIncome());
+        System.out.println("Total expenses: " + insights.getTotalExpenses());
+        System.out.println("Monthly savings: " + insights.getMonthlySavings());
+        System.out.println("Savings rate: " + insights.getSavingsRate() + "%");
+        System.out.println("Highest spending category: " +
+                insights.getHighestSpendingCategory().orElse("No categorized expenses yet"));
 
-        Category custom = categoryService.createCustomCategory("Gym Membership", "Monthly fitness costs", loggedIn);
-        System.out.println("Created custom category: " + custom.getName() + " (owner=" + custom.getUserId() + ")");
+        // =====================================================
+        // End of test code
+        // =====================================================
 
-        List<Category> myCustom = categoryService.getMyCustomCategories(loggedIn);
-        System.out.println("My custom categories: " + myCustom.size()); // គួរបាន 1
-
-// សាកល្បងស្ទួនឈ្មោះខ្លួនឯង
-        try {
-            categoryService.createCustomCategory("Gym Membership", "duplicate", loggedIn);
-        } catch (DuplicateResourceException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
-// សាកល្បងលុប system category
-        try {
-            Category food = visible.stream().filter(c -> c.getName().equals("Food")).findFirst().get();
-            categoryService.deleteCustomCategory(food.getCategoryId(), loggedIn);
-        } catch (UnauthorizedException e) {
-            System.out.println("Correctly rejected: " + e.getMessage());
-        }
-
+        // ---------------------------------------------------
+        // Logout + pool shutdown (MUST be last)
+        // ---------------------------------------------------
         authService.logout();
         System.out.println("Session after logout: " + SessionManager.isUserLoggedIn());
 
