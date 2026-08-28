@@ -1,9 +1,7 @@
 package com.bank;
 
 import com.bank.database.DatabaseConnection;
-import com.bank.enums.AccountType;
-import com.bank.enums.Currency;
-import com.bank.enums.HistoryFilter;
+import com.bank.enums.*;
 import com.bank.exception.*;
 import com.bank.model.*;
 import com.bank.repository.*;
@@ -11,145 +9,390 @@ import com.bank.security.SessionManager;
 import com.bank.service.*;
 
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
+import java.util.Scanner;
 import java.util.UUID;
 
 public class Main {
+
+    private static final Scanner scanner = new Scanner(System.in);
+
+    // Repositories
+    private static final UserRepository userRepo = new UserRepositoryImpl();
+    private static final AccountRepository accountRepo = new AccountRepositoryImpl();
+    private static final TransactionRepository transactionRepo = new TransactionRepositoryImpl();
+    private static final CategoryRepository categoryRepo = new CategoryRepositoryImpl();
+    private static final BudgetRepository budgetRepo = new BudgetRepositoryImpl();
+
+    // Services
+    private static final AccountService accountService = new AccountService(accountRepo, transactionRepo);
+    private static final AuthService authService = new AuthService(userRepo, accountService);
+    private static final TransactionService transactionService = new TransactionService(transactionRepo, accountRepo);
+    private static final CategoryService categoryService = new CategoryService(categoryRepo);
+    private static final BudgetService budgetService = new BudgetService(budgetRepo, accountRepo, transactionService, categoryService);
+    private static final FinancialInsightsService insightsService = new FinancialInsightsService(accountRepo, transactionService, categoryService);
+
     public static void main(String[] args) {
         System.out.println("========================================");
-        System.out.println("  Enterprise Banking System");
-        System.out.println("  Phase 1-12 Smoke Test");
+        System.out.println("   DIGIBANK - Interactive Test Console");
         System.out.println("========================================");
 
-        // ---------------------------------------------------
-        // Connection sanity check
-        // ---------------------------------------------------
-        try (Connection conn = DatabaseConnection.getConnection();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM categories")) {
-
-            if (rs.next()) {
-                System.out.println("Database connection: SUCCESS");
-                System.out.println("Categories in database: " + rs.getInt(1));
+        boolean running = true;
+        while (running) {
+            if (!SessionManager.isUserLoggedIn()) {
+                running = showAuthMenu();
+            } else {
+                running = showMainMenu();
             }
-        } catch (Exception e) {
-            System.err.println("Database connection: FAILED");
-            e.printStackTrace();
         }
 
-        // ---------------------------------------------------
-        // Repositories
-        // ---------------------------------------------------
-        UserRepository userRepo = new UserRepositoryImpl();
-        AccountRepository accountRepo = new AccountRepositoryImpl();
-        TransactionRepository transactionRepo = new TransactionRepositoryImpl();
-        CategoryRepository categoryRepo = new CategoryRepositoryImpl();
+        DatabaseConnection.closePool();
+        System.out.println("Goodbye!");
+    }
 
-        // ---------------------------------------------------
-        // Services
-        // ---------------------------------------------------
-        AccountService accountService = new AccountService(accountRepo, transactionRepo);
-        AuthService authService = new AuthService(userRepo, accountService);
-        TransactionService transactionService = new TransactionService(transactionRepo, accountRepo);
-        CategoryService categoryService = new CategoryService(categoryRepo);
+    // =====================================================
+    // AUTH MENU (before login)
+    // =====================================================
+    private static boolean showAuthMenu() {
+        System.out.println("\n--- AUTH MENU ---");
+        System.out.println("1. Register");
+        System.out.println("2. Login");
+        System.out.println("0. Exit");
+        System.out.print("Choose: ");
 
-        // ---------------------------------------------------
-        // Auth (idempotent - won't re-register if user exists)
-        // ---------------------------------------------------
-        User loggedIn;
-        Optional<User> existing = userRepo.findByUsername("johndoe");
-        if (existing.isEmpty()) {
-            User newUser = authService.register(
-                    "johndoe", "john@example.com", "SecurePass123", "John Doe", "0123456789");
-            System.out.println("Registered: " + newUser.getUsername() + " (id=" + newUser.getUserId() + ")");
-            System.out.println("Default account auto-created on registration.");
+        String choice = scanner.nextLine().trim();
+        switch (choice) {
+            case "1" -> register();
+            case "2" -> login();
+            case "0" -> {
+                return false;
+            }
+            default -> System.out.println("Invalid option.");
         }
-        loggedIn = authService.login("johndoe", "SecurePass123");
-        System.out.println("Login success: " + loggedIn.getFullName());
+        return true;
+    }
 
-        // ---------------------------------------------------
-        // Accounts overview
-        // ---------------------------------------------------
-        List<Account> myAccounts = accountService.getAccountsForUser(loggedIn);
-        System.out.println("Accounts for user: " + myAccounts.size());
-        for (Account acc : myAccounts) {
-            System.out.println("  - " + acc.getAccountNumber() + " | " + acc.getAccountType()
-                    + " | " + acc.getCurrency() + " | Balance: " + acc.getBalance());
+    private static void register() {
+        try {
+            System.out.print("Username: ");
+            String username = scanner.nextLine().trim();
+            System.out.print("Email: ");
+            String email = scanner.nextLine().trim();
+            System.out.print("Password: ");
+            String password = scanner.nextLine().trim();
+            System.out.print("Full name: ");
+            String fullName = scanner.nextLine().trim();
+            System.out.print("Phone: ");
+            String phone = scanner.nextLine().trim();
+
+            User user = authService.register(username, email, password, fullName, phone);
+            System.out.println("Registered successfully! ID=" + user.getUserId()
+                    + " | Default CHECKING/USD account auto-created.");
+        } catch (RuntimeException e) {
+            System.out.println("Registration failed: " + e.getMessage());
         }
-        Account primaryAccount = myAccounts.get(0);
+    }
 
-        // ---------------------------------------------------
-        // Categories overview (Phase 12)
-        // ---------------------------------------------------
-        List<Category> visibleCategories = categoryService.getVisibleCategories(loggedIn);
-        System.out.println("Visible categories: " + visibleCategories.size());
+    private static void login() {
+        try {
+            System.out.print("Username: ");
+            String username = scanner.nextLine().trim();
+            System.out.print("Password: ");
+            String password = scanner.nextLine().trim();
 
-        // ---------------------------------------------------
-        // Transaction history snapshot (Phase 11)
-        // ---------------------------------------------------
-        List<TransactionView> history = transactionService.getTransactionHistory(
-                primaryAccount.getAccountId(), HistoryFilter.ALL, loggedIn);
-        System.out.println("Transaction history for primary account: " + history.size() + " entries");
+            User user = authService.login(username, password);
+            System.out.println("Welcome back, " + user.getFullName() + "!");
+        } catch (RuntimeException e) {
+            System.out.println("Login failed: " + e.getMessage());
+        }
+    }
 
-        BigDecimal currentBalance = accountService.getBalance(primaryAccount.getAccountId(), loggedIn);
-        System.out.println("Current primary balance: " + currentBalance);
+    // =====================================================
+    // MAIN MENU (after login)
+    // =====================================================
+    private static boolean showMainMenu() {
+        User currentUser = SessionManager.getCurrentUser();
+        System.out.println("\n--- MAIN MENU (" + currentUser.getFullName() + ") ---");
+        System.out.println("1. View my accounts");
+        System.out.println("2. Create new account");
+        System.out.println("3. Deposit");
+        System.out.println("4. Withdraw");
+        System.out.println("5. Transfer");
+        System.out.println("6. Transaction history");
+        System.out.println("7. Categories");
+        System.out.println("8. Budgets");
+        System.out.println("9. Financial insights");
+        System.out.println("10. Logout");
+        System.out.println("0. Exit");
+        System.out.print("Choose: ");
 
-        // =====================================================
-        // PHASE 13+ TEST CODE GOES BELOW THIS LINE
-        // =====================================================
+        String choice = scanner.nextLine().trim();
+        switch (choice) {
+            case "1" -> viewAccounts();
+            case "2" -> createAccount();
+            case "3" -> deposit();
+            case "4" -> withdraw();
+            case "5" -> transfer();
+            case "6" -> viewHistory();
+            case "7" -> categoriesMenu();
+            case "8" -> budgetsMenu();
+            case "9" -> viewInsights();
+            case "10" -> {
+                authService.logout();
+                System.out.println("Logged out.");
+            }
+            case "0" -> {
+                return false;
+            }
+            default -> System.out.println("Invalid option.");
+        }
+        return true;
+    }
 
-        FinancialInsightsService insightsService = new FinancialInsightsService(
-                accountRepo, transactionService, categoryService);
+    // =====================================================
+    // ACCOUNTS
+    // =====================================================
+    private static List<Account> viewAccounts() {
+        User user = SessionManager.getCurrentUser();
+        List<Account> accounts = accountService.getAccountsForUser(user);
+        System.out.println("--- Your Accounts ---");
+        for (int i = 0; i < accounts.size(); i++) {
+            Account a = accounts.get(i);
+            System.out.printf("[%d] %s | %s | %s | Balance: %s%n",
+                    i + 1, a.getAccountNumber(), a.getAccountType(), a.getCurrency(), a.getBalance());
+        }
+        if (accounts.isEmpty()) System.out.println("(no accounts)");
+        return accounts;
+    }
 
-        FinancialInsights insights = insightsService.getCurrentMonthInsights(loggedIn);
-        System.out.println("=== Financial Insights (This Month) ===");
+    private static Account selectAccount(String prompt) {
+        List<Account> accounts = viewAccounts();
+        if (accounts.isEmpty()) return null;
+        System.out.print(prompt);
+        int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+        return accounts.get(idx);
+    }
+
+    private static void createAccount() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            System.out.print("Account type (CHECKING/SAVINGS/LOAN): ");
+            AccountType type = AccountType.valueOf(scanner.nextLine().trim().toUpperCase());
+            System.out.print("Currency (USD/KHR): ");
+            Currency currency = Currency.valueOf(scanner.nextLine().trim().toUpperCase());
+
+            Account account = accountService.createAccount(user, type, currency);
+            System.out.println("Account created: " + account.getAccountNumber());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    // =====================================================
+    // DEPOSIT / WITHDRAW
+    // =====================================================
+    private static void deposit() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            Account account = selectAccount("Select account to deposit into (number): ");
+            if (account == null) return;
+
+            System.out.print("Amount: ");
+            BigDecimal amount = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Description: ");
+            String desc = scanner.nextLine().trim();
+
+            Long categoryId = promptOptionalCategory(user);
+
+            Transaction txn = accountService.deposit(account.getAccountId(), amount,
+                    account.getCurrency(), desc, categoryId, user);
+            System.out.println("Deposit successful. New balance: "
+                    + accountService.getBalance(account.getAccountId(), user));
+        } catch (RuntimeException e) {
+            System.out.println("Deposit failed: " + e.getMessage());
+        }
+    }
+
+    private static void withdraw() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            Account account = selectAccount("Select account to withdraw from (number): ");
+            if (account == null) return;
+
+            System.out.print("Amount: ");
+            BigDecimal amount = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Description: ");
+            String desc = scanner.nextLine().trim();
+
+            Long categoryId = promptOptionalCategory(user);
+
+            Transaction txn = accountService.withdraw(account.getAccountId(), amount,
+                    account.getCurrency(), desc, categoryId, user);
+            System.out.println("Withdrawal successful. New balance: "
+                    + accountService.getBalance(account.getAccountId(), user));
+        } catch (RuntimeException e) {
+            System.out.println("Withdrawal failed: " + e.getMessage());
+        }
+    }
+
+    private static Long promptOptionalCategory(User user) {
+        System.out.print("Categorize this transaction? (y/n): ");
+        if (!scanner.nextLine().trim().equalsIgnoreCase("y")) return null;
+
+        List<Category> categories = categoryService.getVisibleCategories(user);
+        for (int i = 0; i < categories.size(); i++) {
+            System.out.println("  [" + (i + 1) + "] " + categories.get(i).getName());
+        }
+        System.out.print("Select category (number): ");
+        int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+        return categories.get(idx).getCategoryId();
+    }
+
+    // =====================================================
+    // TRANSFER
+    // =====================================================
+    private static void transfer() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            Account sender = selectAccount("Select SENDER account (number): ");
+            if (sender == null) return;
+
+            System.out.print("Receiver account number (e.g. DGB-XXXXXXXXX): ");
+            String receiverNumber = scanner.nextLine().trim();
+            Account receiver = accountRepo.findByAccountNumber(receiverNumber)
+                    .orElseThrow(() -> new AccountNotFoundException("Receiver account not found"));
+
+            System.out.print("Amount: ");
+            BigDecimal amount = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Description: ");
+            String desc = scanner.nextLine().trim();
+
+            Transaction txn = accountService.transfer(sender.getAccountId(), receiver.getAccountId(),
+                    amount, sender.getCurrency(), desc, UUID.randomUUID(), user);
+
+            System.out.println("Transfer successful!");
+            System.out.println("Sender balance: " + accountService.getBalance(sender.getAccountId(), user));
+        } catch (RuntimeException e) {
+            System.out.println("Transfer failed: " + e.getMessage());
+        }
+    }
+
+    // =====================================================
+    // HISTORY
+    // =====================================================
+    private static void viewHistory() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            Account account = selectAccount("Select account (number): ");
+            if (account == null) return;
+
+            System.out.print("Filter (ALL/INCOME/OUTCOME): ");
+            HistoryFilter filter = HistoryFilter.valueOf(scanner.nextLine().trim().toUpperCase());
+
+            List<TransactionView> history = transactionService.getTransactionHistory(
+                    account.getAccountId(), filter, user);
+
+            System.out.println("--- Transaction History (" + filter + ") ---");
+            for (TransactionView v : history) {
+                Transaction t = v.getTransaction();
+                System.out.printf("[%s] %s | %s %s | %s%n",
+                        v.getDirection(), t.getTransactionType(), t.getAmount(), t.getCurrency(),
+                        t.getTransactionDate());
+            }
+            if (history.isEmpty()) System.out.println("(no transactions)");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    // =====================================================
+    // CATEGORIES
+    // =====================================================
+    private static void categoriesMenu() {
+        User user = SessionManager.getCurrentUser();
+        System.out.println("1. View all visible categories");
+        System.out.println("2. Create custom category");
+        System.out.print("Choose: ");
+        String choice = scanner.nextLine().trim();
+
+        if (choice.equals("1")) {
+            List<Category> categories = categoryService.getVisibleCategories(user);
+            for (Category c : categories) {
+                String owner = c.isSystem() ? "SYSTEM" : "MINE";
+                System.out.println("  - " + c.getName() + " [" + owner + "]");
+            }
+        } else if (choice.equals("2")) {
+            try {
+                System.out.print("Category name: ");
+                String name = scanner.nextLine().trim();
+                System.out.print("Description: ");
+                String desc = scanner.nextLine().trim();
+                Category c = categoryService.createCustomCategory(name, desc, user);
+                System.out.println("Created: " + c.getName());
+            } catch (RuntimeException e) {
+                System.out.println("Failed: " + e.getMessage());
+            }
+        }
+    }
+
+    // =====================================================
+    // BUDGETS
+    // =====================================================
+    private static void budgetsMenu() {
+        User user = SessionManager.getCurrentUser();
+        System.out.println("1. View my budgets (with usage)");
+        System.out.println("2. Create new budget");
+        System.out.print("Choose: ");
+        String choice = scanner.nextLine().trim();
+
+        if (choice.equals("1")) {
+            List<BudgetView> views = budgetService.getBudgetsWithUsage(user);
+            for (BudgetView v : views) {
+                System.out.printf("Category #%d | Limit: %s | Spent: %s | Usage: %s%% | Status: %s%n",
+                        v.getBudget().getCategoryId(), v.getBudget().getAmountLimit(),
+                        v.getActualSpending(), v.getUsagePercentage(), v.getStatus());
+            }
+            if (views.isEmpty()) System.out.println("(no budgets)");
+        } else if (choice.equals("2")) {
+            try {
+                List<Category> categories = categoryService.getVisibleCategories(user);
+                for (int i = 0; i < categories.size(); i++) {
+                    System.out.println("  [" + (i + 1) + "] " + categories.get(i).getName());
+                }
+                System.out.print("Select category (number): ");
+                int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+                Long categoryId = categories.get(idx).getCategoryId();
+
+                System.out.print("Budget amount limit: ");
+                BigDecimal limit = new BigDecimal(scanner.nextLine().trim());
+
+                System.out.print("Period (WEEKLY/MONTHLY/YEARLY): ");
+                BudgetPeriod period = BudgetPeriod.valueOf(scanner.nextLine().trim().toUpperCase());
+
+                Budget budget = budgetService.createBudget(user, categoryId, limit, period,
+                        LocalDate.now().withDayOfMonth(1), LocalDate.now());
+                System.out.println("Budget created for category id " + categoryId);
+            } catch (RuntimeException e) {
+                System.out.println("Failed: " + e.getMessage());
+            }
+        }
+    }
+
+    // =====================================================
+    // INSIGHTS
+    // =====================================================
+    private static void viewInsights() {
+        User user = SessionManager.getCurrentUser();
+        FinancialInsights insights = insightsService.getCurrentMonthInsights(user);
+
+        System.out.println("--- Financial Insights (This Month) ---");
         System.out.println("Total balance: " + insights.getTotalBalance());
         System.out.println("Total income: " + insights.getTotalIncome());
         System.out.println("Total expenses: " + insights.getTotalExpenses());
         System.out.println("Monthly savings: " + insights.getMonthlySavings());
         System.out.println("Savings rate: " + insights.getSavingsRate() + "%");
-        System.out.println("Highest spending category: " +
-                insights.getHighestSpendingCategory().orElse("No categorized expenses yet"));
-
-        BudgetRepository budgetRepo = new BudgetRepositoryImpl();
-        BudgetService budgetService = new BudgetService(budgetRepo, accountRepo, transactionService, categoryService);
-
-// រក category "Food" ដែលជា system category
-        Category food = categoryService.getVisibleCategories(loggedIn).stream()
-                .filter(c -> c.getName().equals("Food")).findFirst().orElseThrow();
-
-        Budget foodBudget = budgetService.createBudget(
-                loggedIn, food.getCategoryId(), new BigDecimal("200"),
-                com.bank.enums.BudgetPeriod.MONTHLY,
-                java.time.LocalDate.now().withDayOfMonth(1),
-                java.time.LocalDate.now());
-
-        System.out.println("Budget created: " + foodBudget.getAmountLimit() + " for category " + food.getName());
-
-// ដកប្រាក់ជាមួយ category Food ដើម្បីសាកល្បង usage
-        accountService.withdraw(primaryAccount.getAccountId(), new BigDecimal("170"),
-                Currency.USD, "Groceries", food.getCategoryId(), loggedIn);
-
-        BudgetView view = budgetService.getBudgetUsage(foodBudget.getBudgetId(), loggedIn);
-        System.out.println("Actual spending: " + view.getActualSpending());
-        System.out.println("Usage: " + view.getUsagePercentage() + "%");
-        System.out.println("Status: " + view.getStatus());
-        System.out.println("Remaining: " + view.getRemainingAmount());
-
-        // =====================================================
-        // End of test code
-        // =====================================================
-
-        // ---------------------------------------------------
-        // Logout + pool shutdown (MUST be last)
-        // ---------------------------------------------------
-        authService.logout();
-        System.out.println("Session after logout: " + SessionManager.isUserLoggedIn());
-
-        DatabaseConnection.closePool();
+        System.out.println("Highest spending category: "
+                + insights.getHighestSpendingCategory().orElse("No categorized expenses yet"));
     }
 }
