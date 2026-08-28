@@ -10,6 +10,7 @@ import com.bank.repository.*;
 import com.bank.security.SessionManager;
 import com.bank.service.AccountService;
 import com.bank.service.AuthService;
+import com.bank.service.CategoryService;
 import com.bank.service.TransactionService;
 
 import java.math.BigDecimal;
@@ -161,6 +162,32 @@ public class Main {
         List<TransactionView> outcomeOnly = transactionService.getTransactionHistory(
                 primaryAccount.getAccountId(), HistoryFilter.OUTCOME, loggedIn);
         System.out.println("Outcome only: " + outcomeOnly.size());
+
+        CategoryService categoryService = new CategoryService(new CategoryRepositoryImpl());
+
+        List<Category> visible = categoryService.getVisibleCategories(loggedIn);
+        System.out.println("Visible categories for johndoe: " + visible.size()); // គួរបាន 8 (system only, គ្មាន custom នៅឡើយ)
+
+        Category custom = categoryService.createCustomCategory("Gym Membership", "Monthly fitness costs", loggedIn);
+        System.out.println("Created custom category: " + custom.getName() + " (owner=" + custom.getUserId() + ")");
+
+        List<Category> myCustom = categoryService.getMyCustomCategories(loggedIn);
+        System.out.println("My custom categories: " + myCustom.size()); // គួរបាន 1
+
+// សាកល្បងស្ទួនឈ្មោះខ្លួនឯង
+        try {
+            categoryService.createCustomCategory("Gym Membership", "duplicate", loggedIn);
+        } catch (DuplicateResourceException e) {
+            System.out.println("Correctly rejected: " + e.getMessage());
+        }
+
+// សាកល្បងលុប system category
+        try {
+            Category food = visible.stream().filter(c -> c.getName().equals("Food")).findFirst().get();
+            categoryService.deleteCustomCategory(food.getCategoryId(), loggedIn);
+        } catch (UnauthorizedException e) {
+            System.out.println("Correctly rejected: " + e.getMessage());
+        }
 
         authService.logout();
         System.out.println("Session after logout: " + SessionManager.isUserLoggedIn());
