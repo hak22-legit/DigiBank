@@ -24,6 +24,7 @@ public class Main {
     private static final TransactionRepository transactionRepo = new TransactionRepositoryImpl();
     private static final CategoryRepository categoryRepo = new CategoryRepositoryImpl();
     private static final BudgetRepository budgetRepo = new BudgetRepositoryImpl();
+    private static final SavingGoalRepository savingGoalRepo = new SavingGoalRepositoryImpl();
 
     // Services
     private static final AccountService accountService = new AccountService(accountRepo, transactionRepo);
@@ -32,6 +33,7 @@ public class Main {
     private static final CategoryService categoryService = new CategoryService(categoryRepo);
     private static final BudgetService budgetService = new BudgetService(budgetRepo, accountRepo, transactionService, categoryService);
     private static final FinancialInsightsService insightsService = new FinancialInsightsService(accountRepo, transactionService, categoryService);
+    private static final SavingGoalService savingGoalService = new SavingGoalService(savingGoalRepo);
 
     public static void main(String[] args) {
         System.out.println("========================================");
@@ -123,7 +125,8 @@ public class Main {
         System.out.println("7. Categories");
         System.out.println("8. Budgets");
         System.out.println("9. Financial insights");
-        System.out.println("10. Logout");
+        System.out.println("10. Saving goals");
+        System.out.println("11. Logout");
         System.out.println("0. Exit");
         System.out.print("Choose: ");
 
@@ -138,7 +141,8 @@ public class Main {
             case "7" -> categoriesMenu();
             case "8" -> budgetsMenu();
             case "9" -> viewInsights();
-            case "10" -> {
+            case "10" -> savingGoalsMenu();
+            case "11" -> {
                 authService.logout();
                 System.out.println("Logged out.");
             }
@@ -394,5 +398,96 @@ public class Main {
         System.out.println("Savings rate: " + insights.getSavingsRate() + "%");
         System.out.println("Highest spending category: "
                 + insights.getHighestSpendingCategory().orElse("No categorized expenses yet"));
+    }
+
+    // =====================================================
+    // SAVING GOALS (Phase 15)
+    // =====================================================
+    private static void savingGoalsMenu() {
+        User user = SessionManager.getCurrentUser();
+        System.out.println("\n--- SAVING GOALS ---");
+        System.out.println("1. View my goals");
+        System.out.println("2. Create new goal");
+        System.out.println("3. Contribute to a goal");
+        System.out.println("4. Cancel a goal");
+        System.out.print("Choose: ");
+        String choice = scanner.nextLine().trim();
+
+        switch (choice) {
+            case "1" -> viewSavingGoals(user);
+            case "2" -> createSavingGoal(user);
+            case "3" -> contributeSavingGoal(user);
+            case "4" -> cancelSavingGoal(user);
+            default -> System.out.println("Invalid option.");
+        }
+    }
+
+    private static List<SavingGoal> viewSavingGoals(User user) {
+        List<SavingGoal> goals = savingGoalService.getGoalsForUser(user);
+        System.out.println("--- Your Saving Goals ---");
+        for (int i = 0; i < goals.size(); i++) {
+            SavingGoal g = goals.get(i);
+            BigDecimal progress = savingGoalService.getProgressPercentage(g);
+            System.out.printf("[%d] %s | %s / %s (%s%%) | Status: %s | Deadline: %s%n",
+                    i + 1, g.getName(), g.getCurrentAmount(), g.getTargetAmount(),
+                    progress, g.getStatus(), g.getDeadline());
+        }
+        if (goals.isEmpty()) System.out.println("(no saving goals yet)");
+        return goals;
+    }
+
+    private static void createSavingGoal(User user) {
+        try {
+            System.out.print("Goal name: ");
+            String name = scanner.nextLine().trim();
+            System.out.print("Target amount: ");
+            BigDecimal target = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Deadline (YYYY-MM-DD, or leave blank for none): ");
+            String deadlineStr = scanner.nextLine().trim();
+            LocalDate deadline = deadlineStr.isBlank() ? null : LocalDate.parse(deadlineStr);
+
+            SavingGoal goal = savingGoalService.createGoal(user, name, target, deadline);
+            System.out.println("Goal created: " + goal.getName() + " | Target: " + goal.getTargetAmount());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void contributeSavingGoal(User user) {
+        try {
+            List<SavingGoal> goals = viewSavingGoals(user);
+            if (goals.isEmpty()) return;
+
+            System.out.print("Select goal to contribute to (number): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+            Long goalId = goals.get(idx).getGoalId();
+
+            System.out.print("Contribution amount: ");
+            BigDecimal amount = new BigDecimal(scanner.nextLine().trim());
+
+            SavingGoal updated = savingGoalService.contribute(goalId, amount, user);
+            BigDecimal progress = savingGoalService.getProgressPercentage(updated);
+            System.out.println("New progress: " + updated.getCurrentAmount() + " / "
+                    + updated.getTargetAmount() + " (" + progress + "%)");
+            System.out.println("Status: " + updated.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void cancelSavingGoal(User user) {
+        try {
+            List<SavingGoal> goals = viewSavingGoals(user);
+            if (goals.isEmpty()) return;
+
+            System.out.print("Select goal to cancel (number): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+            Long goalId = goals.get(idx).getGoalId();
+
+            savingGoalService.cancelGoal(goalId, user);
+            System.out.println("Goal cancelled.");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
     }
 }
