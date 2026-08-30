@@ -34,6 +34,7 @@ public class Main {
     private static final BudgetService budgetService = new BudgetService(budgetRepo, accountRepo, transactionService, categoryService);
     private static final FinancialInsightsService insightsService = new FinancialInsightsService(accountRepo, transactionService, categoryService);
     private static final SavingGoalService savingGoalService = new SavingGoalService(savingGoalRepo);
+    private static final DashboardService dashboardService = new DashboardService(accountRepo, insightsService, budgetService, savingGoalService);
 
     public static void main(String[] args) {
         System.out.println("========================================");
@@ -126,7 +127,8 @@ public class Main {
         System.out.println("8. Budgets");
         System.out.println("9. Financial insights");
         System.out.println("10. Saving goals");
-        System.out.println("11. Logout");
+        System.out.println("11. Financial dashboard");
+        System.out.println("12. Logout");
         System.out.println("0. Exit");
         System.out.print("Choose: ");
 
@@ -142,7 +144,8 @@ public class Main {
             case "8" -> budgetsMenu();
             case "9" -> viewInsights();
             case "10" -> savingGoalsMenu();
-            case "11" -> {
+            case "11" -> viewDashboard();
+            case "12" -> {
                 authService.logout();
                 System.out.println("Logged out.");
             }
@@ -420,6 +423,52 @@ public class Main {
             case "4" -> cancelSavingGoal(user);
             default -> System.out.println("Invalid option.");
         }
+    }
+
+    // =====================================================
+// DASHBOARD (Phase 16)
+// =====================================================
+    private static void viewDashboard() {
+        User user = SessionManager.getCurrentUser();
+        FinancialDashboard dashboard = dashboardService.buildDashboard(user);
+
+        System.out.println("\n╔══════════════════════════════════════╗");
+        System.out.println("   FINANCIAL DASHBOARD — " + dashboard.getUser().getFullName());
+        System.out.println("╚══════════════════════════════════════╝");
+
+        System.out.println("\n--- Accounts (" + dashboard.getAccounts().size() + ") ---");
+        for (Account a : dashboard.getAccounts()) {
+            System.out.printf("  %s | %s | %s | Balance: %s%n",
+                    a.getAccountNumber(), a.getAccountType(), a.getCurrency(), a.getBalance());
+        }
+        System.out.println("Total balance (all accounts): " + dashboard.getTotalBalance());
+
+        FinancialInsights insights = dashboard.getInsights();
+        System.out.println("\n--- This Month ---");
+        System.out.println("Income: " + insights.getTotalIncome());
+        System.out.println("Expenses: " + insights.getTotalExpenses());
+        System.out.println("Savings: " + insights.getMonthlySavings()
+                + " (" + insights.getSavingsRate() + "% rate)");
+        System.out.println("Top spending category: "
+                + insights.getHighestSpendingCategory().orElse("N/A"));
+
+        System.out.println("\n--- Budgets (" + dashboard.getBudgets().size() + ") ---");
+        for (BudgetView b : dashboard.getBudgets()) {
+            System.out.printf("  Category #%d | %s / %s (%s%%) | %s%n",
+                    b.getBudget().getCategoryId(), b.getActualSpending(),
+                    b.getBudget().getAmountLimit(), b.getUsagePercentage(), b.getStatus());
+        }
+        if (dashboard.getBudgets().isEmpty()) System.out.println("  (no active budgets)");
+
+        System.out.println("\n--- Saving Goals (" + dashboard.getSavingGoals().size() + ") ---");
+        for (SavingGoal g : dashboard.getSavingGoals()) {
+            BigDecimal progress = savingGoalService.getProgressPercentage(g);
+            System.out.printf("  %s | %s / %s (%s%%) | %s%n",
+                    g.getName(), g.getCurrentAmount(), g.getTargetAmount(), progress, g.getStatus());
+        }
+        if (dashboard.getSavingGoals().isEmpty()) System.out.println("  (no saving goals)");
+
+        System.out.println();
     }
 
     private static List<SavingGoal> viewSavingGoals(User user) {
