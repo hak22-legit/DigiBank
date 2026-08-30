@@ -25,9 +25,14 @@ public class Main {
     private static final CategoryRepository categoryRepo = new CategoryRepositoryImpl();
     private static final BudgetRepository budgetRepo = new BudgetRepositoryImpl();
     private static final SavingGoalRepository savingGoalRepo = new SavingGoalRepositoryImpl();
+    private static final FraudAlertRepository fraudAlertRepo = new FraudAlertRepositoryImpl();
 
-    // Services
-    private static final AccountService accountService = new AccountService(accountRepo, transactionRepo);
+    // Services (order matters: dependencies must be declared before the
+    // services that need them, since these are static fields initialized top-to-bottom)
+    private static final FraudDetectionService fraudDetectionService =
+            new FraudDetectionService(fraudAlertRepo, transactionRepo);
+    private static final AccountService accountService =
+            new AccountService(accountRepo, transactionRepo, fraudDetectionService);
     private static final AuthService authService = new AuthService(userRepo, accountService);
     private static final TransactionService transactionService = new TransactionService(transactionRepo, accountRepo);
     private static final CategoryService categoryService = new CategoryService(categoryRepo);
@@ -128,7 +133,8 @@ public class Main {
         System.out.println("9. Financial insights");
         System.out.println("10. Saving goals");
         System.out.println("11. Financial dashboard");
-        System.out.println("12. Logout");
+        System.out.println("12. View my fraud alerts");
+        System.out.println("13. Logout");
         System.out.println("0. Exit");
         System.out.print("Choose: ");
 
@@ -145,7 +151,8 @@ public class Main {
             case "9" -> viewInsights();
             case "10" -> savingGoalsMenu();
             case "11" -> viewDashboard();
-            case "12" -> {
+            case "12" -> viewFraudAlerts();
+            case "13" -> {
                 authService.logout();
                 System.out.println("Logged out.");
             }
@@ -425,52 +432,6 @@ public class Main {
         }
     }
 
-    // =====================================================
-// DASHBOARD (Phase 16)
-// =====================================================
-    private static void viewDashboard() {
-        User user = SessionManager.getCurrentUser();
-        FinancialDashboard dashboard = dashboardService.buildDashboard(user);
-
-        System.out.println("\n╔══════════════════════════════════════╗");
-        System.out.println("   FINANCIAL DASHBOARD — " + dashboard.getUser().getFullName());
-        System.out.println("╚══════════════════════════════════════╝");
-
-        System.out.println("\n--- Accounts (" + dashboard.getAccounts().size() + ") ---");
-        for (Account a : dashboard.getAccounts()) {
-            System.out.printf("  %s | %s | %s | Balance: %s%n",
-                    a.getAccountNumber(), a.getAccountType(), a.getCurrency(), a.getBalance());
-        }
-        System.out.println("Total balance (all accounts): " + dashboard.getTotalBalance());
-
-        FinancialInsights insights = dashboard.getInsights();
-        System.out.println("\n--- This Month ---");
-        System.out.println("Income: " + insights.getTotalIncome());
-        System.out.println("Expenses: " + insights.getTotalExpenses());
-        System.out.println("Savings: " + insights.getMonthlySavings()
-                + " (" + insights.getSavingsRate() + "% rate)");
-        System.out.println("Top spending category: "
-                + insights.getHighestSpendingCategory().orElse("N/A"));
-
-        System.out.println("\n--- Budgets (" + dashboard.getBudgets().size() + ") ---");
-        for (BudgetView b : dashboard.getBudgets()) {
-            System.out.printf("  Category #%d | %s / %s (%s%%) | %s%n",
-                    b.getBudget().getCategoryId(), b.getActualSpending(),
-                    b.getBudget().getAmountLimit(), b.getUsagePercentage(), b.getStatus());
-        }
-        if (dashboard.getBudgets().isEmpty()) System.out.println("  (no active budgets)");
-
-        System.out.println("\n--- Saving Goals (" + dashboard.getSavingGoals().size() + ") ---");
-        for (SavingGoal g : dashboard.getSavingGoals()) {
-            BigDecimal progress = savingGoalService.getProgressPercentage(g);
-            System.out.printf("  %s | %s / %s (%s%%) | %s%n",
-                    g.getName(), g.getCurrentAmount(), g.getTargetAmount(), progress, g.getStatus());
-        }
-        if (dashboard.getSavingGoals().isEmpty()) System.out.println("  (no saving goals)");
-
-        System.out.println();
-    }
-
     private static List<SavingGoal> viewSavingGoals(User user) {
         List<SavingGoal> goals = savingGoalService.getGoalsForUser(user);
         System.out.println("--- Your Saving Goals ---");
@@ -538,5 +499,66 @@ public class Main {
         } catch (RuntimeException e) {
             System.out.println("Failed: " + e.getMessage());
         }
+    }
+
+    // =====================================================
+    // DASHBOARD (Phase 16)
+    // =====================================================
+    private static void viewDashboard() {
+        User user = SessionManager.getCurrentUser();
+        FinancialDashboard dashboard = dashboardService.buildDashboard(user);
+
+        System.out.println("\n╔══════════════════════════════════════╗");
+        System.out.println("   FINANCIAL DASHBOARD — " + dashboard.getUser().getFullName());
+        System.out.println("╚══════════════════════════════════════╝");
+
+        System.out.println("\n--- Accounts (" + dashboard.getAccounts().size() + ") ---");
+        for (Account a : dashboard.getAccounts()) {
+            System.out.printf("  %s | %s | %s | Balance: %s%n",
+                    a.getAccountNumber(), a.getAccountType(), a.getCurrency(), a.getBalance());
+        }
+        System.out.println("Total balance (all accounts): " + dashboard.getTotalBalance());
+
+        FinancialInsights insights = dashboard.getInsights();
+        System.out.println("\n--- This Month ---");
+        System.out.println("Income: " + insights.getTotalIncome());
+        System.out.println("Expenses: " + insights.getTotalExpenses());
+        System.out.println("Savings: " + insights.getMonthlySavings()
+                + " (" + insights.getSavingsRate() + "% rate)");
+        System.out.println("Top spending category: "
+                + insights.getHighestSpendingCategory().orElse("N/A"));
+
+        System.out.println("\n--- Budgets (" + dashboard.getBudgets().size() + ") ---");
+        for (BudgetView b : dashboard.getBudgets()) {
+            System.out.printf("  Category #%d | %s / %s (%s%%) | %s%n",
+                    b.getBudget().getCategoryId(), b.getActualSpending(),
+                    b.getBudget().getAmountLimit(), b.getUsagePercentage(), b.getStatus());
+        }
+        if (dashboard.getBudgets().isEmpty()) System.out.println("  (no active budgets)");
+
+        System.out.println("\n--- Saving Goals (" + dashboard.getSavingGoals().size() + ") ---");
+        for (SavingGoal g : dashboard.getSavingGoals()) {
+            BigDecimal progress = savingGoalService.getProgressPercentage(g);
+            System.out.printf("  %s | %s / %s (%s%%) | %s%n",
+                    g.getName(), g.getCurrentAmount(), g.getTargetAmount(), progress, g.getStatus());
+        }
+        if (dashboard.getSavingGoals().isEmpty()) System.out.println("  (no saving goals)");
+
+        System.out.println();
+    }
+
+    // =====================================================
+    // FRAUD ALERTS (Phase 17)
+    // =====================================================
+    private static void viewFraudAlerts() {
+        User user = SessionManager.getCurrentUser();
+        List<FraudAlert> alerts = fraudAlertRepo.findByUserId(user.getUserId());
+
+        System.out.println("--- Your Fraud Alerts ---");
+        for (FraudAlert a : alerts) {
+            System.out.printf("[%s] %s | Status: %s | Created: %s%n",
+                    a.getRiskLevel(), a.getDescription(), a.getStatus(), a.getCreatedAt());
+        }
+        if (alerts.isEmpty()) System.out.println("(no fraud alerts - nothing suspicious detected)");
     }
 }
