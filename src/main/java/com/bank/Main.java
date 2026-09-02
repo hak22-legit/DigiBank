@@ -41,6 +41,16 @@ public class Main {
     private static final SavingGoalService savingGoalService = new SavingGoalService(savingGoalRepo);
     private static final DashboardService dashboardService = new DashboardService(accountRepo, insightsService, budgetService, savingGoalService);
 
+    private static final AuditLogRepository auditLogRepo = new AuditLogRepositoryImpl();
+    private static final AuditLogService auditLogService = new AuditLogService(auditLogRepo);
+    private static final AdminRepository adminRepo = new AdminRepositoryImpl();
+    private static final AdminAuthService adminAuthService = new AdminAuthService(adminRepo, auditLogService);
+    private static final AdminService adminService = new AdminService(
+            adminRepo, userRepo, accountRepo, transactionRepo, fraudAlertRepo, auditLogService);
+    private static final FraudInvestigationService fraudInvestigationService =
+            new FraudInvestigationService(fraudAlertRepo, accountRepo, auditLogRepo, auditLogService);
+
+
     public static void main(String[] args) {
         System.out.println("========================================");
         System.out.println("   DIGIBANK - Interactive Test Console");
@@ -48,10 +58,12 @@ public class Main {
 
         boolean running = true;
         while (running) {
-            if (!SessionManager.isUserLoggedIn()) {
-                running = showAuthMenu();
-            } else {
+            if (SessionManager.isAdminLoggedIn()) {
+                running = showAdminMenu();
+            } else if (SessionManager.isUserLoggedIn()) {
                 running = showMainMenu();
+            } else {
+                running = showAuthMenu();
             }
         }
 
@@ -66,6 +78,8 @@ public class Main {
         System.out.println("\n--- AUTH MENU ---");
         System.out.println("1. Register");
         System.out.println("2. Login");
+        System.out.println("3. Admin Login");
+        System.out.println("4. Forgot Admin Password");
         System.out.println("0. Exit");
         System.out.print("Choose: ");
 
@@ -73,12 +87,28 @@ public class Main {
         switch (choice) {
             case "1" -> register();
             case "2" -> login();
+            case "3" -> adminLogin();
+            case "4" -> forgotAdminPassword();
             case "0" -> {
                 return false;
             }
             default -> System.out.println("Invalid option.");
         }
         return true;
+    }
+
+    private static void adminLogin() {
+        try {
+            System.out.print("Admin username: ");
+            String username = scanner.nextLine().trim();
+            System.out.print("Admin password: ");
+            String password = scanner.nextLine().trim();
+
+            Admin admin = adminAuthService.login(username, password);
+            System.out.println("Welcome, " + admin.getFullName() + " (" + admin.getRole() + ")");
+        } catch (RuntimeException e) {
+            System.out.println("Admin login failed: " + e.getMessage());
+        }
     }
 
     private static void register() {
@@ -113,6 +143,26 @@ public class Main {
             System.out.println("Welcome back, " + user.getFullName() + "!");
         } catch (RuntimeException e) {
             System.out.println("Login failed: " + e.getMessage());
+        }
+    }
+
+    private static void forgotAdminPassword() {
+        try {
+            System.out.print("Admin username: ");
+            String username = scanner.nextLine().trim();
+
+            String question = adminAuthService.getSecurityQuestion(username);
+            System.out.println("Security question: " + question);
+            System.out.print("Your answer: ");
+            String answer = scanner.nextLine().trim();
+
+            System.out.print("New password: ");
+            String newPassword = scanner.nextLine().trim();
+
+            adminAuthService.recoverPasswordWithSecurityAnswer(username, answer, newPassword);
+            System.out.println("Password recovered successfully! You can now log in.");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
         }
     }
 
@@ -561,4 +611,354 @@ public class Main {
         }
         if (alerts.isEmpty()) System.out.println("(no fraud alerts - nothing suspicious detected)");
     }
+
+    // =====================================================
+// ADMIN MENU (Phase 18-19)
+// =====================================================
+    private static boolean showAdminMenu() {
+        Admin admin = SessionManager.getCurrentAdmin();
+        System.out.println("\n--- ADMIN MENU (" + admin.getFullName() + " | " + admin.getRole() + ") ---");
+
+        if (admin.getRole() == AdminRole.SUPER_ADMIN) {
+            System.out.println("1. Set/update my security question");
+            System.out.println("2. Create new admin");
+            System.out.println("3. Reset another admin's password");
+            System.out.println("4. View all admins");
+            System.out.println("5. Suspend an admin");
+            System.out.println("6. Reactivate an admin");
+            System.out.println("7. View all users");
+            System.out.println("8. View system statistics");
+            System.out.println("9. View all fraud alerts (oversight)");
+            System.out.println("10. View audit logs (paginated)");
+        } else {
+            System.out.println("1. Change my password");
+        }
+        if (admin.getRole() == AdminRole.COMPLIANCE_OFFICER) {
+            System.out.println("11. View open fraud alerts");
+            System.out.println("12. Investigate a fraud alert");
+            System.out.println("13. Resolve a fraud alert");
+            System.out.println("14. Freeze an account");
+            System.out.println("15. Unfreeze an account");
+            System.out.println("16. View fraud-related audit logs");
+        }
+        System.out.println("17. Logout");
+        System.out.println("0. Exit");
+        System.out.print("Choose: ");
+
+        String choice = scanner.nextLine().trim();
+        switch (choice) {
+            case "1" -> {
+                if (admin.getRole() == AdminRole.SUPER_ADMIN) setSecurityQuestionMenu(admin);
+                else changeAdminPassword(admin);
+            }
+            case "2" -> createAdminMenu(admin);
+            case "3" -> resetAdminPasswordMenu(admin);
+            case "4" -> viewAllAdmins(admin);
+            case "5" -> suspendAdminMenu(admin);
+            case "6" -> reactivateAdminMenu(admin);
+            case "7" -> viewAllUsers(admin);
+            case "8" -> viewSystemStats(admin);
+            case "9" -> viewAllFraudAlertsOversight(admin);
+            case "10" -> viewAuditLogsPaginated(admin);
+            case "11" -> viewOpenFraudAlerts(admin);
+            case "12" -> investigateFraudMenu(admin);
+            case "13" -> resolveFraudMenu(admin);
+            case "14" -> freezeAccountMenu(admin);
+            case "15" -> unfreezeAccountMenu(admin);
+            case "16" -> viewFraudAuditLogs(admin);
+            case "17" -> {
+                adminAuthService.logout();
+                System.out.println("Logged out.");
+            }
+            case "0" -> {
+                return false;
+            }
+            default -> System.out.println("Invalid option.");
+        }
+        return true;
+    }
+
+    private static void changeAdminPassword(Admin admin) {
+        try {
+            System.out.print("Current password: ");
+            String currentPassword = scanner.nextLine().trim();
+            System.out.print("New password: ");
+            String newPassword = scanner.nextLine().trim();
+            System.out.print("Confirm new password: ");
+            String confirmPassword = scanner.nextLine().trim();
+
+            if (!newPassword.equals(confirmPassword)) {
+                System.out.println("Passwords do not match.");
+                return;
+            }
+
+            adminAuthService.changePassword(admin, currentPassword, newPassword);
+            System.out.println("Password changed successfully!");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void createAdminMenu(Admin admin) {
+        try {
+            System.out.print("New admin username: ");
+            String username = scanner.nextLine().trim();
+            System.out.print("New admin email: ");
+            String email = scanner.nextLine().trim();
+            System.out.print("New admin password: ");
+            String password = scanner.nextLine().trim();
+            System.out.print("Full name: ");
+            String fullName = scanner.nextLine().trim();
+            System.out.print("Role (LOAN_OFFICER/COMPLIANCE_OFFICER/SUPER_ADMIN): ");
+            AdminRole role = AdminRole.valueOf(scanner.nextLine().trim().toUpperCase());
+
+            Admin newAdmin = adminService.createAdmin(admin, username, email, password, fullName, role);
+            System.out.println("Admin created: " + newAdmin.getUsername() + " (" + newAdmin.getRole() + ")");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void resetAdminPasswordMenu(Admin admin) {
+        try {
+            List<Admin> allAdmins = adminService.getAllAdmins(admin);
+            for (int i = 0; i < allAdmins.size(); i++) {
+                System.out.println("  [" + (i + 1) + "] " + allAdmins.get(i).getUsername()
+                        + " (" + allAdmins.get(i).getRole() + ")");
+            }
+            System.out.print("Select admin (number): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+            Long targetId = allAdmins.get(idx).getAdminId();
+
+            System.out.print("New password: ");
+            String newPassword = scanner.nextLine().trim();
+
+            adminService.resetAdminPassword(admin, targetId, newPassword);
+            System.out.println("Password reset successfully.");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewOpenFraudAlerts(Admin admin) {
+        try {
+            List<FraudAlert> alerts = fraudInvestigationService.getOpenAlerts(admin);
+            System.out.println("--- Open Fraud Alerts ---");
+            for (FraudAlert a : alerts) {
+                System.out.printf("[id=%d] [%s] user=%d | %s%n",
+                        a.getAlertId(), a.getRiskLevel(), a.getUserId(), a.getDescription());
+            }
+            if (alerts.isEmpty()) System.out.println("(no open alerts)");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void investigateFraudMenu(Admin admin) {
+        try {
+            System.out.print("Alert ID to investigate: ");
+            Long alertId = Long.parseLong(scanner.nextLine().trim());
+            FraudAlert updated = fraudInvestigationService.investigateAlert(admin, alertId);
+            System.out.println("Alert status now: " + updated.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void resolveFraudMenu(Admin admin) {
+        try {
+            System.out.print("Alert ID to resolve: ");
+            Long alertId = Long.parseLong(scanner.nextLine().trim());
+            System.out.print("Resolution notes: ");
+            String notes = scanner.nextLine().trim();
+            System.out.print("Confirmed fraud? (y/n): ");
+            boolean confirmed = scanner.nextLine().trim().equalsIgnoreCase("y");
+
+            FraudAlert updated = fraudInvestigationService.resolveAlert(admin, alertId, notes, confirmed);
+            System.out.println("Alert resolved as: " + updated.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void freezeAccountMenu(Admin admin) {
+        try {
+            System.out.print("Account number to freeze (e.g. DGB-XXXXXXXXX): ");
+            String accountNumber = scanner.nextLine().trim();
+            Account account = accountRepo.findByAccountNumber(accountNumber)
+                    .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+
+            System.out.print("Reason: ");
+            String reason = scanner.nextLine().trim();
+
+            Account updated = fraudInvestigationService.freezeAccount(admin, account.getAccountId(), reason);
+            System.out.println("Account " + updated.getAccountNumber() + " is now " + updated.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void unfreezeAccountMenu(Admin admin) {
+        try {
+            System.out.print("Account number to unfreeze (e.g. DGB-XXXXXXXXX): ");
+            String accountNumber = scanner.nextLine().trim();
+            Account account = accountRepo.findByAccountNumber(accountNumber)
+                    .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+
+            Account updated = fraudInvestigationService.unfreezeAccount(admin, account.getAccountId());
+            System.out.println("Account " + updated.getAccountNumber() + " is now " + updated.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewFraudAuditLogs(Admin admin) {
+        List<AuditLog> logs = auditLogService.getFraudRelatedLogs(admin);
+        System.out.println("--- Fraud-Related Audit Logs ---");
+        for (AuditLog log : logs) {
+            System.out.printf("[%s] admin=%s | %s | %s%n",
+                    log.getCreatedAt(), log.getAdminId(), log.getAction(), log.getDetails());
+        }
+        if (logs.isEmpty()) System.out.println("(no fraud-related logs yet)");
+    }
+
+    private static void setSecurityQuestionMenu(Admin admin) {
+        try {
+            System.out.print("Security question: ");
+            String question = scanner.nextLine().trim();
+            System.out.print("Answer: ");
+            String answer = scanner.nextLine().trim();
+
+            adminAuthService.setSecurityQuestion(admin, question, answer);
+            System.out.println("Security question saved.");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewAllAdmins(Admin admin) {
+        try {
+            List<Admin> admins = adminService.getAllAdmins(admin);
+            System.out.println("--- All Admins ---");
+            for (Admin a : admins) {
+                System.out.printf("[id=%d] %s | %s | %s | Status: %s%n",
+                        a.getAdminId(), a.getUsername(), a.getFullName(), a.getRole(), a.getStatus());
+            }
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void suspendAdminMenu(Admin admin) {
+        try {
+            List<Admin> admins = adminService.getAllAdmins(admin);
+            for (int i = 0; i < admins.size(); i++) {
+                System.out.println("  [" + (i + 1) + "] " + admins.get(i).getUsername()
+                        + " (" + admins.get(i).getRole() + ", " + admins.get(i).getStatus() + ")");
+            }
+            System.out.print("Select admin to suspend (number): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+
+            adminService.suspendAdmin(admin, admins.get(idx).getAdminId());
+            System.out.println("Admin suspended.");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void reactivateAdminMenu(Admin admin) {
+        try {
+            List<Admin> admins = adminService.getAllAdmins(admin);
+            for (int i = 0; i < admins.size(); i++) {
+                System.out.println("  [" + (i + 1) + "] " + admins.get(i).getUsername()
+                        + " (" + admins.get(i).getRole() + ", " + admins.get(i).getStatus() + ")");
+            }
+            System.out.print("Select admin to reactivate (number): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+
+            adminService.reactivateAdmin(admin, admins.get(idx).getAdminId());
+            System.out.println("Admin reactivated.");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewAllUsers(Admin admin) {
+        try {
+            List<User> users = adminService.getAllUsers(admin);
+            System.out.println("--- All Users ---");
+            for (User u : users) {
+                System.out.printf("[id=%d] %s | %s | %s | Status: %s%n",
+                        u.getUserId(), u.getUsername(), u.getFullName(), u.getEmail(), u.getStatus());
+            }
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewSystemStats(Admin admin) {
+        try {
+            SystemStats stats = adminService.getSystemStats(admin);
+            System.out.println("--- System Statistics ---");
+            System.out.println("Total users: " + stats.getTotalUsers());
+            System.out.println("Total admins: " + stats.getTotalAdmins());
+            System.out.println("Total accounts: " + stats.getTotalAccounts());
+            System.out.println("Total transactions: " + stats.getTotalTransactions());
+            System.out.println("Total fraud alerts: " + stats.getTotalFraudAlerts()
+                    + " (" + stats.getOpenFraudAlerts() + " open)");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewAllFraudAlertsOversight(Admin admin) {
+        try {
+            List<FraudAlert> alerts = adminService.getAllFraudAlerts(admin);
+            System.out.println("--- All Fraud Alerts (Oversight) ---");
+            for (FraudAlert a : alerts) {
+                System.out.printf("[id=%d] [%s] Status: %s | %s%n",
+                        a.getAlertId(), a.getRiskLevel(), a.getStatus(), a.getDescription());
+            }
+            if (alerts.isEmpty()) System.out.println("(no fraud alerts)");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewAuditLogsPaginated(Admin admin) {
+        int page = 1;
+        int pageSize = 10;
+        boolean browsing = true;
+
+        while (browsing) {
+            PagedResult<AuditLog> result = auditLogService.getLogsPaginated(admin, page, pageSize);
+
+            System.out.println("--- Audit Logs (Page " + result.getCurrentPage()
+                    + " / " + result.getTotalPages() + ", " + result.getTotalItems() + " total) ---");
+            for (AuditLog log : result.getItems()) {
+                System.out.printf("[%s] admin=%s | %s on %s#%s | %s%n",
+                        log.getCreatedAt(), log.getAdminId(), log.getAction(),
+                        log.getTargetTable(), log.getTargetId(), log.getDetails());
+            }
+            if (result.getItems().isEmpty()) System.out.println("(no logs on this page)");
+
+            System.out.println("\n[n] Next page | [p] Previous page | [q] Quit view");
+            System.out.print("Choose: ");
+            String nav = scanner.nextLine().trim().toLowerCase();
+
+            switch (nav) {
+                case "n" -> {
+                    if (result.hasNextPage()) page++;
+                    else System.out.println("Already on last page.");
+                }
+                case "p" -> {
+                    if (result.hasPreviousPage()) page--;
+                    else System.out.println("Already on first page.");
+                }
+                case "q" -> browsing = false;
+                default -> System.out.println("Invalid option.");
+            }
+        }
+    }
+
 }

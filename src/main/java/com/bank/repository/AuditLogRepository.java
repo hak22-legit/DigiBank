@@ -12,6 +12,8 @@ public interface AuditLogRepository {
     List<AuditLog> findByAdminId(Long adminId);
     List<AuditLog> findAll();
     AuditLog save(AuditLog log);
+    List<AuditLog> findPaginated(int offset, int limit);
+    long countAll();
 
     /**
      * Insert within an existing transaction/connection.

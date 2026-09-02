@@ -84,10 +84,11 @@ public class AdminRepositoryImpl implements AdminRepository {
 
     private Admin insert(Admin admin) {
         String sql = """
-            INSERT INTO admins (username, email, password_hash, full_name, role, status, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            RETURNING admin_id
-            """;
+        INSERT INTO admins (username, email, password_hash, full_name, role, status,
+                             security_question, security_answer_hash, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING admin_id
+        """;
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -99,8 +100,10 @@ public class AdminRepositoryImpl implements AdminRepository {
             stmt.setString(4, admin.getFullName());
             stmt.setString(5, admin.getRole().name());
             stmt.setString(6, admin.getStatus().name());
-            stmt.setTimestamp(7, Timestamp.valueOf(now));
-            stmt.setTimestamp(8, Timestamp.valueOf(now));
+            stmt.setString(7, admin.getSecurityQuestion());
+            stmt.setString(8, admin.getSecurityAnswerHash());
+            stmt.setTimestamp(9, Timestamp.valueOf(now));
+            stmt.setTimestamp(10, Timestamp.valueOf(now));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -117,11 +120,11 @@ public class AdminRepositoryImpl implements AdminRepository {
 
     private Admin update(Admin admin) {
         String sql = """
-            UPDATE admins
-            SET username = ?, email = ?, password_hash = ?, full_name = ?,
-                role = ?, status = ?, updated_at = ?
-            WHERE admin_id = ?
-            """;
+        UPDATE admins
+        SET username = ?, email = ?, password_hash = ?, full_name = ?,
+            role = ?, status = ?, security_question = ?, security_answer_hash = ?, updated_at = ?
+        WHERE admin_id = ?
+        """;
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -133,8 +136,10 @@ public class AdminRepositoryImpl implements AdminRepository {
             stmt.setString(4, admin.getFullName());
             stmt.setString(5, admin.getRole().name());
             stmt.setString(6, admin.getStatus().name());
-            stmt.setTimestamp(7, Timestamp.valueOf(now));
-            stmt.setLong(8, admin.getAdminId());
+            stmt.setString(7, admin.getSecurityQuestion());
+            stmt.setString(8, admin.getSecurityAnswerHash());
+            stmt.setTimestamp(9, Timestamp.valueOf(now));
+            stmt.setLong(10, admin.getAdminId());
 
             stmt.executeUpdate();
             admin.setUpdatedAt(now);
@@ -166,8 +171,13 @@ public class AdminRepositoryImpl implements AdminRepository {
                 .fullName(rs.getString("full_name"))
                 .role(AdminRole.valueOf(rs.getString("role")))
                 .status(AdminStatus.valueOf(rs.getString("status")))
+                .securityQuestion(rs.getString("security_question"))
+                .securityAnswerHash(rs.getString("security_answer_hash"))
                 .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                 .updatedAt(rs.getTimestamp("updated_at").toLocalDateTime())
                 .build();
     }
+
+
+
 }
