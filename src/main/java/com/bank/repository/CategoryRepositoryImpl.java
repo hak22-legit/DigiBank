@@ -28,19 +28,55 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     }
 
     @Override
-    public Optional<Category> findByName(String name) {
-        String sql = "SELECT * FROM categories WHERE name = ?";
+    public List<Category> findSystemCategories() {
+        String sql = "SELECT * FROM categories WHERE is_system = true ORDER BY category_id";
+        List<Category> categories = new ArrayList<>();
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) categories.add(mapRow(rs));
+        } catch (SQLException e) {
+            throw new RuntimeException("Error finding system categories", e);
+        }
+        return categories;
+    }
+
+    @Override
+    public List<Category> findCustomCategoriesByUserId(Long userId) {
+        String sql = "SELECT * FROM categories WHERE user_id = ? ORDER BY category_id";
+        List<Category> categories = new ArrayList<>();
+
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.setString(1, name);
+            stmt.setLong(1, userId);
             try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) return Optional.of(mapRow(rs));
+                while (rs.next()) categories.add(mapRow(rs));
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Error finding category by name: " + name, e);
+            throw new RuntimeException("Error finding custom categories for user: " + userId, e);
         }
-        return Optional.empty();
+        return categories;
+    }
+
+    @Override
+    public List<Category> findVisibleForUser(Long userId) {
+        String sql = "SELECT * FROM categories WHERE is_system = true OR user_id = ? ORDER BY category_id";
+        List<Category> categories = new ArrayList<>();
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) categories.add(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error finding visible categories for user: " + userId, e);
+        }
+        return categories;
     }
 
     @Override
@@ -66,8 +102,8 @@ public class CategoryRepositoryImpl implements CategoryRepository {
 
     private Category insert(Category category) {
         String sql = """
-            INSERT INTO categories (name, description, is_system, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO categories (user_id, name, description, is_system, created_at)
+            VALUES (?, ?, ?, ?, ?)
             RETURNING category_id
             """;
 
@@ -75,10 +111,15 @@ public class CategoryRepositoryImpl implements CategoryRepository {
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             LocalDateTime now = LocalDateTime.now();
-            stmt.setString(1, category.getName());
-            stmt.setString(2, category.getDescription());
-            stmt.setBoolean(3, category.isSystem());
-            stmt.setTimestamp(4, Timestamp.valueOf(now));
+            if (category.getUserId() != null) {
+                stmt.setLong(1, category.getUserId());
+            } else {
+                stmt.setNull(1, Types.BIGINT);
+            }
+            stmt.setString(2, category.getName());
+            stmt.setString(3, category.getDescription());
+            stmt.setBoolean(4, category.isSystem());
+            stmt.setTimestamp(5, Timestamp.valueOf(now));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -93,15 +134,14 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     }
 
     private Category update(Category category) {
-        String sql = "UPDATE categories SET name = ?, description = ?, is_system = ? WHERE category_id = ?";
+        String sql = "UPDATE categories SET name = ?, description = ? WHERE category_id = ?";
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, category.getName());
             stmt.setString(2, category.getDescription());
-            stmt.setBoolean(3, category.isSystem());
-            stmt.setLong(4, category.getCategoryId());
+            stmt.setLong(3, category.getCategoryId());
             stmt.executeUpdate();
             return category;
         } catch (SQLException e) {
@@ -123,8 +163,11 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     }
 
     private Category mapRow(ResultSet rs) throws SQLException {
+        Long userId = rs.getObject("user_id") != null ? rs.getLong("user_id") : null;
+
         return Category.builder()
                 .categoryId(rs.getLong("category_id"))
+                .userId(userId)
                 .name(rs.getString("name"))
                 .description(rs.getString("description"))
                 .system(rs.getBoolean("is_system"))

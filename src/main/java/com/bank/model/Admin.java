@@ -21,6 +21,8 @@ public class Admin {
     private String fullName;
     private AdminRole role;
     private AdminStatus status;
+    private String securityQuestion;
+    private String securityAnswerHash;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

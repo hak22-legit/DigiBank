@@ -10,9 +10,11 @@ import com.bank.security.SessionManager;
 public class AdminAuthService {
 
     private final AdminRepository adminRepository;
+    private final AuditLogService auditLogService;
 
-    public AdminAuthService(AdminRepository adminRepository) {
+    public AdminAuthService(AdminRepository adminRepository, AuditLogService auditLogService) {
         this.adminRepository = adminRepository;
+        this.auditLogService = auditLogService;
     }
 
     public Admin login(String username, String password) {
@@ -28,10 +30,80 @@ public class AdminAuthService {
         }
 
         SessionManager.loginAdmin(admin);
+        auditLogService.log(admin.getAdminId(), "LOGIN", "admins", admin.getAdminId(),
+                "Admin logged in: " + admin.getUsername());
+
         return admin;
     }
 
     public void logout() {
+        Admin admin = SessionManager.getCurrentAdmin();
+        if (admin != null) {
+            auditLogService.log(admin.getAdminId(), "LOGOUT", "admins", admin.getAdminId(),
+                    "Admin logged out: " + admin.getUsername());
+        }
         SessionManager.logout();
+    }
+
+    public void changePassword(Admin admin, String currentPassword, String newPassword) {
+        if (!PasswordHasher.verify(currentPassword, admin.getPasswordHash())) {
+            throw new AuthenticationException("Current password is incorrect");
+        }
+
+        admin.setPasswordHash(PasswordHasher.hash(newPassword));
+        adminRepository.save(admin);
+
+        auditLogService.log(admin.getAdminId(), "CHANGE_PASSWORD", "admins", admin.getAdminId(),
+                "Admin changed their own password");
+    }
+
+    /**
+     * Returns the security question for a username, WITHOUT requiring login -
+     * needed so a locked-out admin (e.g. SUPER_ADMIN with no one above them)
+     * can start the recovery flow.
+     */
+    public String getSecurityQuestion(String username) {
+        Admin admin = adminRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthenticationException("Admin not found"));
+
+        if (admin.getSecurityQuestion() == null) {
+            throw new AuthenticationException(
+                    "No security question set up for this account - contact another admin for recovery");
+        }
+        return admin.getSecurityQuestion();
+    }
+
+    /**
+     * Completes self-service password recovery: verifies the security
+     * answer, and if correct, sets a new password - no current password
+     * or another admin's involvement required.
+     */
+    public void recoverPasswordWithSecurityAnswer(String username, String answer, String newPassword) {
+        Admin admin = adminRepository.findByUsername(username)
+                .orElseThrow(() -> new AuthenticationException("Admin not found"));
+
+        if (admin.getSecurityAnswerHash() == null
+                || !PasswordHasher.verify(answer.trim().toLowerCase(), admin.getSecurityAnswerHash())) {
+            throw new AuthenticationException("Security answer is incorrect");
+        }
+
+        admin.setPasswordHash(PasswordHasher.hash(newPassword));
+        adminRepository.save(admin);
+
+        auditLogService.log(admin.getAdminId(), "PASSWORD_RECOVERY", "admins", admin.getAdminId(),
+                "Password recovered via security question (self-service, no login required)");
+    }
+
+    /**
+     * Lets a logged-in admin set or change their own recovery question -
+     * self-service setup, not something another admin can do for them.
+     */
+    public void setSecurityQuestion(Admin admin, String question, String answer) {
+        admin.setSecurityQuestion(question);
+        admin.setSecurityAnswerHash(PasswordHasher.hash(answer.trim().toLowerCase()));
+        adminRepository.save(admin);
+
+        auditLogService.log(admin.getAdminId(), "SET_SECURITY_QUESTION", "admins", admin.getAdminId(),
+                "Admin set/updated their security question");
     }
 }

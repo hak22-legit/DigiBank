@@ -27,11 +27,14 @@ public class AccountService {
 
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final FraudDetectionService fraudDetectionService;
 
     public AccountService(AccountRepository accountRepository,
-                          TransactionRepository transactionRepository) {
+                          TransactionRepository transactionRepository,
+                          FraudDetectionService fraudDetectionService) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.fraudDetectionService = fraudDetectionService;
     }
 
     public Account createAccount(User owner, AccountType accountType, Currency currency) {
@@ -98,19 +101,16 @@ public class AccountService {
         }
         validateAmount(amount);
 
-        // ការត្រួតពិនិត្យ idempotency: បើ request ដូចនេះធ្លាប់ដំណើរការរួចហើយ ត្រឡប់លទ្ធផលចាស់វិញ
         Optional<Transaction> existing = transactionRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
             return existing.get();
         }
 
-        // Lock ត្រឹមត្រូវតាមលំដាប់៖ lock account_id តូចជាងជានិច្ចមុនគេ
-        // នេះជាមូលហេតុជៀសវាង deadlock ពេល Transfer A (X->Y) និង Transfer B (Y->X)
-        // ដំណើរការក្នុងពេលដំណាលគ្នា - ទាំងពីរនឹងព្យាយាម lock តាមលំដាប់ដូចគ្នា
         Long firstLockId = Math.min(senderAccountId, receiverAccountId);
         Long secondLockId = Math.max(senderAccountId, receiverAccountId);
 
         Connection conn = null;
+        Transaction resultTransaction;
         try {
             conn = DatabaseConnection.getConnection();
             conn.setAutoCommit(false);
@@ -120,7 +120,6 @@ public class AccountService {
             Account secondLocked = accountRepository.findByIdForUpdate(conn, secondLockId)
                     .orElseThrow(() -> new AccountNotFoundException("Account not found: " + secondLockId));
 
-            // ត្រឡប់ទៅតួនាទី sender/receiver វិញ ទោះបីជា lock តាមលំដាប់ណាក៏ដោយ
             Account sender = senderAccountId.equals(firstLockId) ? firstLocked : secondLocked;
             Account receiver = senderAccountId.equals(firstLockId) ? secondLocked : firstLocked;
 
@@ -156,15 +155,11 @@ public class AccountService {
             transaction = transactionRepository.saveWithConnection(conn, transaction);
 
             conn.commit();
-            return transaction;
+            resultTransaction = transaction;
 
         } catch (RuntimeException | SQLException e) {
             rollbackQuietly(conn);
 
-            // ការការពារ race condition៖ បើ request ដំណាលគ្នា ២ ប្រើ idempotency key ដូចគ្នា
-            // មួយ commit មុន ម្យ៉ាងទៀតប៉ះ UNIQUE constraint នៅ DB level
-            // ជំនួសឱ្យបោះ error ដ៏គួរឱ្យខ្លាច យើងចាប់វា ហើយត្រឡប់ transaction
-            // ដែល request ដទៃបានបង្កើតរួចហើយ
             if (isUniqueViolation(e)) {
                 return transactionRepository.findByIdempotencyKey(idempotencyKey)
                         .orElseThrow(() -> new RuntimeException("Transfer failed and could not recover", e));
@@ -175,6 +170,19 @@ public class AccountService {
         } finally {
             closeQuietly(conn);
         }
+
+        // Fraud detection runs AFTER the transfer has already committed
+        // successfully. It never blocks or reverses the transfer (Option A).
+        // A failure here should not break the customer-facing transfer flow,
+        // so it's wrapped defensively.
+        try {
+            fraudDetectionService.evaluateTransfer(resultTransaction, requestingUser.getUserId());
+        } catch (RuntimeException e) {
+            // In Phase 25 this will use proper logging instead of println
+            System.err.println("Fraud detection failed (non-fatal): " + e.getMessage());
+        }
+
+        return resultTransaction;
     }
 
     private void assertSameCurrency(Account sender, Account receiver) {
@@ -200,7 +208,7 @@ public class AccountService {
      * Deposit money into an account. See Phase 8 for full rule explanation.
      */
     public Transaction deposit(Long accountId, BigDecimal amount, Currency requestCurrency,
-                               String description, User requestingUser) {
+                               String description, Long categoryId, User requestingUser) {
 
         validateAmount(amount);
 
@@ -226,6 +234,7 @@ public class AccountService {
                     .amount(amount)
                     .currency(effectiveCurrency)
                     .description(description)
+                    .categoryId(categoryId)   // បន្ថែមបន្ទាត់នេះ
                     .status(TransactionStatus.COMPLETED)
                     .build();
 
@@ -253,7 +262,7 @@ public class AccountService {
      * ACID: SELECT FOR UPDATE lock -> ត្រួតពិនិត្យ balance -> update balance -> insert transaction -> commit/rollback
      */
     public Transaction withdraw(Long accountId, BigDecimal amount, Currency requestCurrency,
-                                String description, User requestingUser) {
+                                String description, Long categoryId, User requestingUser) {
 
         validateAmount(amount);
 
@@ -284,6 +293,7 @@ public class AccountService {
                     .amount(amount)
                     .currency(effectiveCurrency)
                     .description(description)
+                    .categoryId(categoryId)   // បន្ថែមបន្ទាត់នេះ
                     .status(TransactionStatus.COMPLETED)
                     .build();
 
