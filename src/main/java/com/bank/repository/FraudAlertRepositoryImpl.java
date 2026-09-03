@@ -91,6 +91,33 @@ public class FraudAlertRepositoryImpl implements FraudAlertRepository {
     }
 
     @Override
+    public FraudAlert update(FraudAlert alert) {
+        String sql = """
+        UPDATE fraud_alerts
+        SET status = ?, investigated_by = ?, resolved_at = ?, resolution_notes = ?, updated_at = ?
+        WHERE alert_id = ?
+        """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            LocalDateTime now = LocalDateTime.now();
+            stmt.setString(1, alert.getStatus().name());
+            setNullableLong(stmt, 2, alert.getInvestigatedBy());
+            stmt.setTimestamp(3, alert.getResolvedAt() != null ? Timestamp.valueOf(alert.getResolvedAt()) : null);
+            stmt.setString(4, alert.getResolutionNotes());
+            stmt.setTimestamp(5, Timestamp.valueOf(now));
+            stmt.setLong(6, alert.getAlertId());
+
+            stmt.executeUpdate();
+            alert.setUpdatedAt(now);
+            return alert;
+        } catch (SQLException e) {
+            throw new RuntimeException("Error updating fraud alert: " + alert.getAlertId(), e);
+        }
+    }
+
+    @Override
     public FraudAlert saveWithConnection(Connection conn, FraudAlert alert) throws SQLException {
         String sql = """
             INSERT INTO fraud_alerts (user_id, account_id, transaction_id, risk_level, status,

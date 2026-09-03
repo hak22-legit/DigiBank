@@ -106,6 +106,39 @@ public class AuditLogRepositoryImpl implements AuditLogRepository {
         }
     }
 
+    @Override
+    public List<AuditLog> findPaginated(int offset, int limit) {
+        String sql = "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        List<AuditLog> logs = new ArrayList<>();
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, limit);
+            stmt.setInt(2, offset);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) logs.add(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error finding paginated audit logs", e);
+        }
+        return logs;
+    }
+
+    @Override
+    public long countAll() {
+        String sql = "SELECT COUNT(*) FROM audit_logs";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            if (rs.next()) return rs.getLong(1);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error counting audit logs", e);
+        }
+        return 0;
+    }
+
     private AuditLog mapRow(ResultSet rs) throws SQLException {
         Long adminId = rs.getObject("admin_id") != null ? rs.getLong("admin_id") : null;
         Long targetId = rs.getObject("target_id") != null ? rs.getLong("target_id") : null;

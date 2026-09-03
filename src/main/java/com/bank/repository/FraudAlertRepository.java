@@ -13,6 +13,7 @@ public interface FraudAlertRepository {
     List<FraudAlert> findByStatus(String status);
     List<FraudAlert> findAll();
     FraudAlert save(FraudAlert alert);
+    FraudAlert update(FraudAlert alert);
 
     /**
      * Insert within an existing transaction/connection.

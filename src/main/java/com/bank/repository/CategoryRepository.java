@@ -7,7 +7,14 @@ import java.util.Optional;
 
 public interface CategoryRepository {
     Optional<Category> findById(Long categoryId);
-    Optional<Category> findByName(String name);
+    List<Category> findSystemCategories();
+    List<Category> findCustomCategoriesByUserId(Long userId);
+
+    /**
+     * Returns everything a user can see: system categories + their own custom ones.
+     */
+    List<Category> findVisibleForUser(Long userId);
+
     List<Category> findAll();
     Category save(Category category);
     boolean deleteById(Long categoryId);
