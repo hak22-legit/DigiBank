@@ -49,6 +49,10 @@ public class Main {
             adminRepo, userRepo, accountRepo, transactionRepo, fraudAlertRepo, auditLogService);
     private static final FraudInvestigationService fraudInvestigationService =
             new FraudInvestigationService(fraudAlertRepo, accountRepo, auditLogRepo, auditLogService);
+    private static final LoanRepository loanRepo = new LoanRepositoryImpl();
+    private static final LoanService loanService = new LoanService(loanRepo);
+    private static final LoanApprovalService loanApprovalService =
+            new LoanApprovalService(loanRepo, accountRepo, transactionRepo, auditLogService);
 
 
     public static void main(String[] args) {
@@ -184,7 +188,9 @@ public class Main {
         System.out.println("10. Saving goals");
         System.out.println("11. Financial dashboard");
         System.out.println("12. View my fraud alerts");
-        System.out.println("13. Logout");
+        System.out.println("13. Apply for a loan");
+        System.out.println("14. My loans");
+        System.out.println("15. Logout");
         System.out.println("0. Exit");
         System.out.print("Choose: ");
 
@@ -202,7 +208,9 @@ public class Main {
             case "10" -> savingGoalsMenu();
             case "11" -> viewDashboard();
             case "12" -> viewFraudAlerts();
-            case "13" -> {
+            case "13" -> applyForLoanMenu();
+            case "14" -> viewMyLoans();
+            case "15" -> {
                 authService.logout();
                 System.out.println("Logged out.");
             }
@@ -641,6 +649,11 @@ public class Main {
             System.out.println("15. Unfreeze an account");
             System.out.println("16. View fraud-related audit logs");
         }
+        if (admin.getRole() == AdminRole.LOAN_OFFICER) {
+            System.out.println("18. View pending loans");
+            System.out.println("19. Approve a loan");
+            System.out.println("20. Reject a loan");
+        }
         System.out.println("17. Logout");
         System.out.println("0. Exit");
         System.out.print("Choose: ");
@@ -670,6 +683,9 @@ public class Main {
                 adminAuthService.logout();
                 System.out.println("Logged out.");
             }
+            case "18" -> viewPendingLoans(admin);
+            case "19" -> approveLoanMenu(admin);
+            case "20" -> rejectLoanMenu(admin);
             case "0" -> {
                 return false;
             }
@@ -677,6 +693,59 @@ public class Main {
         }
         return true;
     }
+
+    private static void viewPendingLoans(Admin admin) {
+        try {
+            List<Loan> loans = loanApprovalService.getPendingLoans(admin);
+            System.out.println("--- Pending Loans ---");
+            for (Loan l : loans) {
+                System.out.printf("[id=%d] user=%d | Requested: %s | Risk: %s (%s) | Income: %s | Credit: %d%n",
+                        l.getLoanId(), l.getUserId(), l.getRequestedAmount(),
+                        l.getRiskLevel(), l.getRiskScore(), l.getMonthlyIncome(), l.getCreditScore());
+            }
+            if (loans.isEmpty()) System.out.println("(no pending loans)");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void approveLoanMenu(Admin admin) {
+        try {
+            System.out.print("Loan ID to approve: ");
+            Long loanId = Long.parseLong(scanner.nextLine().trim());
+            System.out.print("Borrower's account number for disbursement (e.g. DGB-XXXXXXXXX): ");
+            String accountNumber = scanner.nextLine().trim();
+            Account account = accountRepo.findByAccountNumber(accountNumber)
+                    .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountNumber));
+
+            System.out.print("Approved amount: ");
+            BigDecimal approvedAmount = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Interest rate (%): ");
+            BigDecimal rate = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Term (months): ");
+            Integer term = Integer.parseInt(scanner.nextLine().trim());
+
+            Loan approved = loanApprovalService.approveLoan(admin, loanId, account.getAccountId(),
+                    approvedAmount, rate, term);
+            System.out.println("Loan approved and disbursed! Status: " + approved.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void rejectLoanMenu(Admin admin) {
+        try {
+            System.out.print("Loan ID to reject: ");
+            Long loanId = Long.parseLong(scanner.nextLine().trim());
+            System.out.print("Rejection reason: ");
+            String reason = scanner.nextLine().trim();
+
+            Loan rejected = loanApprovalService.rejectLoan(admin, loanId, reason);
+            System.out.println("Loan rejected. Status: " + rejected.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }    
 
     private static void changeAdminPassword(Admin admin) {
         try {
@@ -909,6 +978,42 @@ public class Main {
         } catch (RuntimeException e) {
             System.out.println("Failed: " + e.getMessage());
         }
+    }
+
+    private static void applyForLoanMenu() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            System.out.print("Requested amount: ");
+            BigDecimal amount = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Monthly income: ");
+            BigDecimal income = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Monthly expense: ");
+            BigDecimal expense = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Existing debt: ");
+            BigDecimal debt = new BigDecimal(scanner.nextLine().trim());
+            System.out.print("Credit score (300-850): ");
+            Integer creditScore = Integer.parseInt(scanner.nextLine().trim());
+            System.out.print("Term (months): ");
+            Integer term = Integer.parseInt(scanner.nextLine().trim());
+
+            Loan loan = loanService.applyForLoan(user, amount, income, expense, debt, creditScore, term);
+            System.out.println("Loan application submitted! ID=" + loan.getLoanId()
+                    + " | Risk: " + loan.getRiskLevel() + " (" + loan.getRiskScore() + ")"
+                    + " | Status: " + loan.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewMyLoans() {
+        User user = SessionManager.getCurrentUser();
+        List<Loan> loans = loanService.getUserLoans(user);
+        System.out.println("--- My Loans ---");
+        for (Loan l : loans) {
+            System.out.printf("[id=%d] Requested: %s | Status: %s | Risk: %s (%s)%n",
+                    l.getLoanId(), l.getRequestedAmount(), l.getStatus(), l.getRiskLevel(), l.getRiskScore());
+        }
+        if (loans.isEmpty()) System.out.println("(no loan applications yet)");
     }
 
     private static void viewAllFraudAlertsOversight(Admin admin) {

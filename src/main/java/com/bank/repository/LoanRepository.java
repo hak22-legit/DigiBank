@@ -15,14 +15,12 @@ public interface LoanRepository {
     Loan save(Loan loan);
     boolean deleteById(Long loanId);
 
-    /**
-     * Locks the loan row for update within an existing transaction.
-     * Used by LoanRepayment service (Phase 21) alongside account locking.
-     */
     Optional<Loan> findByIdForUpdate(Connection conn, Long loanId) throws SQLException;
+    void updateWithConnection(Connection conn, Loan loan) throws SQLException;
 
     /**
-     * Updates loan status/outstanding balance within an existing transaction/connection.
+     * Insert within an existing transaction/connection (Phase 21 repayment
+     * flow reuses this same pattern established for other entities).
      */
-    void updateWithConnection(Connection conn, Loan loan) throws SQLException;
+    Loan saveWithConnection(Connection conn, Loan loan) throws SQLException;
 }
