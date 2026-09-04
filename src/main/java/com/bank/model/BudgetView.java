@@ -1,6 +1,7 @@
 package com.bank.model;
 
-import com.bank.enums.BudgetUsageStatus;
+import com.bank.model.entity.Budget;
+import com.bank.model.enums.BudgetUsageStatus;
 import lombok.Builder;
 import lombok.Getter;
 

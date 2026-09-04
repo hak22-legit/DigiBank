@@ -1,9 +1,11 @@
 package com.bank.service;
 
-import com.bank.enums.TransactionDirection;
-import com.bank.enums.HistoryFilter;
+import com.bank.model.entity.Account;
+import com.bank.model.enums.TransactionDirection;
+import com.bank.model.enums.HistoryFilter;
 import com.bank.model.*;
-import com.bank.repository.AccountRepository;
+import com.bank.model.entity.User;
+import com.bank.model.repository.AccountRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

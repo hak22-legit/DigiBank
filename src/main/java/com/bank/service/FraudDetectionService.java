@@ -1,11 +1,12 @@
 package com.bank.service;
 
-import com.bank.enums.FraudStatus;
-import com.bank.enums.RiskLevel;
-import com.bank.model.FraudAlert;
-import com.bank.model.Transaction;
-import com.bank.repository.FraudAlertRepository;
-import com.bank.repository.TransactionRepository;
+import com.bank.model.enums.FraudStatus;
+import com.bank.model.enums.RiskLevel;
+import com.bank.model.entity.FraudAlert;
+import com.bank.model.entity.Transaction;
+import com.bank.model.enums.TransactionType;
+import com.bank.model.repository.FraudAlertRepository;
+import com.bank.model.repository.TransactionRepository;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -67,7 +68,7 @@ public class FraudDetectionService {
         List<Transaction> recentTransfers = transactionRepository
                 .findByAccountIdAndDateRange(txn.getAccountId(), tier2WindowStart, LocalDateTime.now())
                 .stream()
-                .filter(t -> t.getTransactionType() == com.bank.enums.TransactionType.TRANSFER)
+                .filter(t -> t.getTransactionType() == TransactionType.TRANSFER)
                 .toList();
 
         long tier2Count = recentTransfers.size();

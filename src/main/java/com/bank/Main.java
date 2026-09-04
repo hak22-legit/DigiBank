@@ -1,10 +1,11 @@
 package com.bank;
 
 import com.bank.database.DatabaseConnection;
-import com.bank.enums.*;
 import com.bank.exception.*;
 import com.bank.model.*;
-import com.bank.repository.*;
+import com.bank.model.entity.*;
+import com.bank.model.enums.*;
+import com.bank.model.repository.*;
 import com.bank.security.SessionManager;
 import com.bank.service.*;
 

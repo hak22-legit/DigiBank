@@ -1,9 +1,9 @@
 package com.bank.service;
 
-import com.bank.enums.AdminStatus;
+import com.bank.model.enums.AdminStatus;
 import com.bank.exception.AuthenticationException;
-import com.bank.model.Admin;
-import com.bank.repository.AdminRepository;
+import com.bank.model.entity.Admin;
+import com.bank.model.repository.AdminRepository;
 import com.bank.security.PasswordHasher;
 import com.bank.security.SessionManager;
 

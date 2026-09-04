@@ -1,15 +1,14 @@
 package com.bank.service;
 
-import com.bank.enums.BudgetStatus;
-import com.bank.enums.BudgetUsageStatus;
-import com.bank.enums.HistoryFilter;
-import com.bank.enums.TransactionDirection;
+import com.bank.model.entity.Account;
+import com.bank.model.entity.Budget;
+import com.bank.model.entity.User;
+import com.bank.model.enums.*;
 import com.bank.exception.BudgetNotFoundException;
-import com.bank.exception.CategoryNotFoundException;
 import com.bank.exception.UnauthorizedException;
 import com.bank.model.*;
-import com.bank.repository.AccountRepository;
-import com.bank.repository.BudgetRepository;
+import com.bank.model.repository.AccountRepository;
+import com.bank.model.repository.BudgetRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -42,7 +41,7 @@ public class BudgetService {
      * visible to the user (system category, or their own custom category).
      */
     public Budget createBudget(User user, Long categoryId, BigDecimal amountLimit,
-                               com.bank.enums.BudgetPeriod period,
+                               BudgetPeriod period,
                                LocalDate startDate, LocalDate endDate) {
 
         // Validates the category exists and is visible to this user

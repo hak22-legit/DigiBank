@@ -1,12 +1,12 @@
 package com.bank.service;
 
-import com.bank.enums.GoalStatus;
+import com.bank.model.enums.GoalStatus;
 import com.bank.exception.InvalidAmountException;
 import com.bank.exception.SavingGoalNotFoundException;
 import com.bank.exception.UnauthorizedException;
-import com.bank.model.SavingGoal;
-import com.bank.model.User;
-import com.bank.repository.SavingGoalRepository;
+import com.bank.model.entity.SavingGoal;
+import com.bank.model.entity.User;
+import com.bank.model.repository.SavingGoalRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

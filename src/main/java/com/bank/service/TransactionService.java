@@ -1,15 +1,15 @@
 package com.bank.service;
 
-import com.bank.enums.HistoryFilter;
-import com.bank.enums.TransactionDirection;
+import com.bank.model.enums.HistoryFilter;
+import com.bank.model.enums.TransactionDirection;
 import com.bank.exception.AccountNotFoundException;
 import com.bank.exception.UnauthorizedException;
-import com.bank.model.Account;
-import com.bank.model.Transaction;
+import com.bank.model.entity.Account;
+import com.bank.model.entity.Transaction;
 import com.bank.model.TransactionView;
-import com.bank.model.User;
-import com.bank.repository.AccountRepository;
-import com.bank.repository.TransactionRepository;
+import com.bank.model.entity.User;
+import com.bank.model.repository.AccountRepository;
+import com.bank.model.repository.TransactionRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;

@@ -1,17 +1,17 @@
 package com.bank.service;
 
 import com.bank.database.DatabaseConnection;
-import com.bank.enums.AccountStatus;
-import com.bank.enums.AccountType;
-import com.bank.enums.Currency;
-import com.bank.enums.TransactionStatus;
-import com.bank.enums.TransactionType;
+import com.bank.model.enums.AccountStatus;
+import com.bank.model.enums.AccountType;
+import com.bank.model.enums.Currency;
+import com.bank.model.enums.TransactionStatus;
+import com.bank.model.enums.TransactionType;
 import com.bank.exception.*;
-import com.bank.model.Account;
-import com.bank.model.Transaction;
-import com.bank.model.User;
-import com.bank.repository.AccountRepository;
-import com.bank.repository.TransactionRepository;
+import com.bank.model.entity.Account;
+import com.bank.model.entity.Transaction;
+import com.bank.model.entity.User;
+import com.bank.model.repository.AccountRepository;
+import com.bank.model.repository.TransactionRepository;
 import com.bank.util.AccountNumberGenerator;
 
 import java.math.BigDecimal;

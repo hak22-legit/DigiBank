@@ -1,20 +1,19 @@
 package com.bank.service;
 
-import com.bank.enums.LoanStatus;
-import com.bank.enums.RiskLevel;
+import com.bank.model.enums.LoanStatus;
+import com.bank.model.enums.RiskLevel;
 import com.bank.exception.InvalidAmountException;
 import com.bank.exception.InvalidCreditScoreException;
 import com.bank.exception.LoanNotFoundException;
 import com.bank.exception.UnauthorizedException;
-import com.bank.model.Loan;
-import com.bank.model.User;
-import com.bank.repository.LoanRepository;
+import com.bank.model.entity.Loan;
+import com.bank.model.entity.User;
+import com.bank.model.repository.LoanRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
 import java.util.List;
 
 public class LoanService {

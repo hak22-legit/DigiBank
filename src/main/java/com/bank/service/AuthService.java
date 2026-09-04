@@ -1,12 +1,12 @@
 package com.bank.service;
 
-import com.bank.enums.AccountType;
-import com.bank.enums.Currency;
-import com.bank.enums.UserStatus;
+import com.bank.model.enums.AccountType;
+import com.bank.model.enums.Currency;
+import com.bank.model.enums.UserStatus;
 import com.bank.exception.AuthenticationException;
 import com.bank.exception.DuplicateResourceException;
-import com.bank.model.User;
-import com.bank.repository.UserRepository;
+import com.bank.model.entity.User;
+import com.bank.model.repository.UserRepository;
 import com.bank.security.PasswordHasher;
 import com.bank.security.SessionManager;
 
