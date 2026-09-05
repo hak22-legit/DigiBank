@@ -1,5 +1,8 @@
 package com.bank.model;
 
+import com.bank.model.entity.Account;
+import com.bank.model.entity.SavingGoal;
+import com.bank.model.entity.User;
 import lombok.Builder;
 import lombok.Getter;
 

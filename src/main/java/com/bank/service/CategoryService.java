@@ -3,9 +3,9 @@ package com.bank.service;
 import com.bank.exception.CategoryNotFoundException;
 import com.bank.exception.DuplicateResourceException;
 import com.bank.exception.UnauthorizedException;
-import com.bank.model.Category;
-import com.bank.model.User;
-import com.bank.repository.CategoryRepository;
+import com.bank.model.entity.Category;
+import com.bank.model.entity.User;
+import com.bank.model.repository.CategoryRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;

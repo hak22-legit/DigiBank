@@ -1,17 +1,19 @@
 package com.bank.service;
 
 import com.bank.database.DatabaseConnection;
-import com.bank.enums.AccountStatus;
-import com.bank.enums.AccountType;
-import com.bank.enums.Currency;
-import com.bank.enums.TransactionStatus;
-import com.bank.enums.TransactionType;
+import com.bank.model.dto.AccountDTO;
+import com.bank.model.dto.AccountMapper;
+import com.bank.model.enums.AccountStatus;
+import com.bank.model.enums.AccountType;
+import com.bank.model.enums.Currency;
+import com.bank.model.enums.TransactionStatus;
+import com.bank.model.enums.TransactionType;
 import com.bank.exception.*;
-import com.bank.model.Account;
-import com.bank.model.Transaction;
-import com.bank.model.User;
-import com.bank.repository.AccountRepository;
-import com.bank.repository.TransactionRepository;
+import com.bank.model.entity.Account;
+import com.bank.model.entity.Transaction;
+import com.bank.model.entity.User;
+import com.bank.model.repository.AccountRepository;
+import com.bank.model.repository.TransactionRepository;
 import com.bank.util.AccountNumberGenerator;
 
 import java.math.BigDecimal;
@@ -37,9 +39,12 @@ public class AccountService {
         this.fraudDetectionService = fraudDetectionService;
     }
 
-    public Account createAccount(User owner, AccountType accountType, Currency currency) {
+    public BigDecimal getBalance(Long accountId, User requestingUser) {
+        Account account = getAccountById(accountId, requestingUser);
+        return account.getBalance();
+    }
+    public AccountDTO createAccount(User owner, AccountType accountType, Currency currency) {
         String accountNumber = AccountNumberGenerator.generate();
-
         while (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
             accountNumber = AccountNumberGenerator.generate();
         }
@@ -53,7 +58,8 @@ public class AccountService {
                 .status(AccountStatus.ACTIVE)
                 .build();
 
-        return accountRepository.save(account);
+        Account saved = accountRepository.save(account);
+        return AccountMapper.toDTO(saved);
     }
 
     public Account getAccountById(Long accountId, User requestingUser) {
@@ -64,13 +70,9 @@ public class AccountService {
         return account;
     }
 
-    public List<Account> getAccountsForUser(User user) {
-        return accountRepository.findByUserId(user.getUserId());
-    }
-
-    public BigDecimal getBalance(Long accountId, User requestingUser) {
-        Account account = getAccountById(accountId, requestingUser);
-        return account.getBalance();
+    public List<AccountDTO> getAccountsForUser(User user) {
+        List<Account> accounts = accountRepository.findByUserId(user.getUserId());
+        return AccountMapper.toDTOList(accounts);
     }
 
     /**

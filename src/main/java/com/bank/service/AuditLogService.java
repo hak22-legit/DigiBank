@@ -1,11 +1,11 @@
 package com.bank.service;
 
-import com.bank.enums.AdminRole;
+import com.bank.model.enums.AdminRole;
 import com.bank.exception.UnauthorizedException;
-import com.bank.model.Admin;
-import com.bank.model.AuditLog;
+import com.bank.model.entity.Admin;
+import com.bank.model.entity.AuditLog;
 import com.bank.model.PagedResult;
-import com.bank.repository.AuditLogRepository;
+import com.bank.model.repository.AuditLogRepository;
 
 import java.util.List;
 

@@ -1,9 +1,11 @@
 package com.bank.service;
 
-import com.bank.enums.AdminStatus;
+import com.bank.model.dto.AdminDTO;
+import com.bank.model.dto.AdminMapper;
+import com.bank.model.enums.AdminStatus;
 import com.bank.exception.AuthenticationException;
-import com.bank.model.Admin;
-import com.bank.repository.AdminRepository;
+import com.bank.model.entity.Admin;
+import com.bank.model.repository.AdminRepository;
 import com.bank.security.PasswordHasher;
 import com.bank.security.SessionManager;
 
@@ -17,23 +19,22 @@ public class AdminAuthService {
         this.auditLogService = auditLogService;
     }
 
-    public Admin login(String username, String password) {
+    public AdminDTO login(String username, String password) {
         Admin admin = adminRepository.findByUsername(username)
                 .orElseThrow(() -> new AuthenticationException("Invalid username or password"));
 
         if (!PasswordHasher.verify(password, admin.getPasswordHash())) {
             throw new AuthenticationException("Invalid username or password");
         }
-
         if (admin.getStatus() != AdminStatus.ACTIVE) {
             throw new AuthenticationException("Admin account is not active. Status: " + admin.getStatus());
         }
 
-        SessionManager.loginAdmin(admin);
+        SessionManager.loginAdmin(admin); // Session ទុក Entity ពេញលេញ
         auditLogService.log(admin.getAdminId(), "LOGIN", "admins", admin.getAdminId(),
                 "Admin logged in: " + admin.getUsername());
 
-        return admin;
+        return AdminMapper.toDTO(admin);
     }
 
     public void logout() {

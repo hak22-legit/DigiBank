@@ -1,7 +1,7 @@
 package com.bank.security;
 
-import com.bank.model.Admin;
-import com.bank.model.User;
+import com.bank.model.entity.Admin;
+import com.bank.model.entity.User;
 
 public class SessionManager {
 

@@ -1,15 +1,15 @@
 package com.bank.service;
 
 import com.bank.database.DatabaseConnection;
-import com.bank.enums.*;
 import com.bank.exception.*;
-import com.bank.model.Account;
-import com.bank.model.Admin;
-import com.bank.model.Loan;
-import com.bank.model.Transaction;
-import com.bank.repository.AccountRepository;
-import com.bank.repository.LoanRepository;
-import com.bank.repository.TransactionRepository;
+import com.bank.model.entity.Account;
+import com.bank.model.entity.Admin;
+import com.bank.model.entity.Loan;
+import com.bank.model.entity.Transaction;
+import com.bank.model.enums.*;
+import com.bank.model.repository.AccountRepository;
+import com.bank.model.repository.LoanRepository;
+import com.bank.model.repository.TransactionRepository;
 
 import java.math.BigDecimal;
 import java.sql.Connection;

@@ -1,10 +1,15 @@
 package com.bank;
 
 import com.bank.database.DatabaseConnection;
-import com.bank.enums.*;
 import com.bank.exception.*;
 import com.bank.model.*;
-import com.bank.repository.*;
+import com.bank.model.dto.AccountDTO;
+import com.bank.model.dto.AdminDTO;
+import com.bank.model.dto.LoanDTO;
+import com.bank.model.dto.UserDTO;
+import com.bank.model.entity.*;
+import com.bank.model.enums.*;
+import com.bank.model.repository.*;
 import com.bank.security.SessionManager;
 import com.bank.service.*;
 
@@ -108,7 +113,7 @@ public class Main {
             System.out.print("Admin password: ");
             String password = scanner.nextLine().trim();
 
-            Admin admin = adminAuthService.login(username, password);
+            AdminDTO admin = adminAuthService.login(username, password);
             System.out.println("Welcome, " + admin.getFullName() + " (" + admin.getRole() + ")");
         } catch (RuntimeException e) {
             System.out.println("Admin login failed: " + e.getMessage());
@@ -128,7 +133,7 @@ public class Main {
             System.out.print("Phone: ");
             String phone = scanner.nextLine().trim();
 
-            User user = authService.register(username, email, password, fullName, phone);
+            UserDTO user = authService.register(username, email, password, fullName, phone);
             System.out.println("Registered successfully! ID=" + user.getUserId()
                     + " | Default CHECKING/USD account auto-created.");
         } catch (RuntimeException e) {
@@ -143,7 +148,7 @@ public class Main {
             System.out.print("Password: ");
             String password = scanner.nextLine().trim();
 
-            User user = authService.login(username, password);
+            UserDTO user = authService.login(username, password);
             System.out.println("Welcome back, " + user.getFullName() + "!");
         } catch (RuntimeException e) {
             System.out.println("Login failed: " + e.getMessage());
@@ -225,12 +230,12 @@ public class Main {
     // =====================================================
     // ACCOUNTS
     // =====================================================
-    private static List<Account> viewAccounts() {
+    private static List<AccountDTO> viewAccounts() {
         User user = SessionManager.getCurrentUser();
-        List<Account> accounts = accountService.getAccountsForUser(user);
+        List<AccountDTO> accounts = accountService.getAccountsForUser(user);
         System.out.println("--- Your Accounts ---");
         for (int i = 0; i < accounts.size(); i++) {
-            Account a = accounts.get(i);
+            AccountDTO a = accounts.get(i);
             System.out.printf("[%d] %s | %s | %s | Balance: %s%n",
                     i + 1, a.getAccountNumber(), a.getAccountType(), a.getCurrency(), a.getBalance());
         }
@@ -238,8 +243,8 @@ public class Main {
         return accounts;
     }
 
-    private static Account selectAccount(String prompt) {
-        List<Account> accounts = viewAccounts();
+    private static AccountDTO selectAccount(String prompt) {
+        List<AccountDTO> accounts = viewAccounts();
         if (accounts.isEmpty()) return null;
         System.out.print(prompt);
         int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
@@ -254,7 +259,7 @@ public class Main {
             System.out.print("Currency (USD/KHR): ");
             Currency currency = Currency.valueOf(scanner.nextLine().trim().toUpperCase());
 
-            Account account = accountService.createAccount(user, type, currency);
+            AccountDTO account = accountService.createAccount(user, type, currency);
             System.out.println("Account created: " + account.getAccountNumber());
         } catch (RuntimeException e) {
             System.out.println("Failed: " + e.getMessage());
@@ -267,7 +272,7 @@ public class Main {
     private static void deposit() {
         try {
             User user = SessionManager.getCurrentUser();
-            Account account = selectAccount("Select account to deposit into (number): ");
+            AccountDTO account = selectAccount("Select account to deposit into (number): ");
             if (account == null) return;
 
             System.out.print("Amount: ");
@@ -289,7 +294,7 @@ public class Main {
     private static void withdraw() {
         try {
             User user = SessionManager.getCurrentUser();
-            Account account = selectAccount("Select account to withdraw from (number): ");
+            AccountDTO account = selectAccount("Select account to withdraw from (number): ");
             if (account == null) return;
 
             System.out.print("Amount: ");
@@ -327,7 +332,7 @@ public class Main {
     private static void transfer() {
         try {
             User user = SessionManager.getCurrentUser();
-            Account sender = selectAccount("Select SENDER account (number): ");
+            AccountDTO sender = selectAccount("Select SENDER account (number): ");
             if (sender == null) return;
 
             System.out.print("Receiver account number (e.g. DGB-XXXXXXXXX): ");
@@ -356,7 +361,7 @@ public class Main {
     private static void viewHistory() {
         try {
             User user = SessionManager.getCurrentUser();
-            Account account = selectAccount("Select account (number): ");
+            AccountDTO account = selectAccount("Select account (number): ");
             if (account == null) return;
 
             System.out.print("Filter (ALL/INCOME/OUTCOME): ");
@@ -996,9 +1001,9 @@ public class Main {
             System.out.print("Term (months): ");
             Integer term = Integer.parseInt(scanner.nextLine().trim());
 
-            Loan loan = loanService.applyForLoan(user, amount, income, expense, debt, creditScore, term);
+            LoanDTO loan = loanService.applyForLoan(user, amount, income, expense, debt, creditScore, term);
             System.out.println("Loan application submitted! ID=" + loan.getLoanId()
-                    + " | Risk: " + loan.getRiskLevel() + " (" + loan.getRiskScore() + ")"
+                    + " | Risk: " + loan.getRiskLevel()
                     + " | Status: " + loan.getStatus());
         } catch (RuntimeException e) {
             System.out.println("Failed: " + e.getMessage());
@@ -1007,11 +1012,11 @@ public class Main {
 
     private static void viewMyLoans() {
         User user = SessionManager.getCurrentUser();
-        List<Loan> loans = loanService.getUserLoans(user);
+        List<LoanDTO> loans = loanService.getUserLoans(user);
         System.out.println("--- My Loans ---");
-        for (Loan l : loans) {
-            System.out.printf("[id=%d] Requested: %s | Status: %s | Risk: %s (%s)%n",
-                    l.getLoanId(), l.getRequestedAmount(), l.getStatus(), l.getRiskLevel(), l.getRiskScore());
+        for (LoanDTO l : loans) {
+            System.out.printf("[id=%d] Requested: %s | Status: %s | Risk: %s%n",
+                    l.getLoanId(), l.getRequestedAmount(), l.getStatus(), l.getRiskLevel());
         }
         if (loans.isEmpty()) System.out.println("(no loan applications yet)");
     }

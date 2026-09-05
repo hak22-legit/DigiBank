@@ -1,19 +1,19 @@
 package com.bank.service;
 
 import com.bank.database.DatabaseConnection;
-import com.bank.enums.AccountStatus;
-import com.bank.enums.AdminRole;
-import com.bank.enums.FraudStatus;
+import com.bank.model.enums.AccountStatus;
+import com.bank.model.enums.AdminRole;
+import com.bank.model.enums.FraudStatus;
 import com.bank.exception.AccountNotFoundException;
 import com.bank.exception.FraudAlertStateException;
 import com.bank.exception.UnauthorizedException;
-import com.bank.model.Account;
-import com.bank.model.Admin;
-import com.bank.model.AuditLog;
-import com.bank.model.FraudAlert;
-import com.bank.repository.AccountRepository;
-import com.bank.repository.AuditLogRepository;
-import com.bank.repository.FraudAlertRepository;
+import com.bank.model.entity.Account;
+import com.bank.model.entity.Admin;
+import com.bank.model.entity.AuditLog;
+import com.bank.model.entity.FraudAlert;
+import com.bank.model.repository.AccountRepository;
+import com.bank.model.repository.AuditLogRepository;
+import com.bank.model.repository.FraudAlertRepository;
 
 import java.sql.Connection;
 import java.sql.SQLException;

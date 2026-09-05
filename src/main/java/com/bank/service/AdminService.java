@@ -1,13 +1,14 @@
 package com.bank.service;
 
-import com.bank.enums.AdminRole;
-import com.bank.enums.AdminStatus;
+import com.bank.model.entity.Admin;
+import com.bank.model.entity.FraudAlert;
+import com.bank.model.entity.User;
+import com.bank.model.enums.*;
 import com.bank.exception.AdminNotFoundException;
-import com.bank.exception.AuthenticationException;
 import com.bank.exception.DuplicateResourceException;
 import com.bank.exception.UnauthorizedException;
 import com.bank.model.*;
-import com.bank.repository.*;
+import com.bank.model.repository.*;
 import com.bank.security.PasswordHasher;
 
 import java.util.List;

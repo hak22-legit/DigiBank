@@ -1,6 +1,7 @@
 package com.bank.model;
 
-import com.bank.enums.TransactionDirection;
+import com.bank.model.entity.Transaction;
+import com.bank.model.enums.TransactionDirection;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
