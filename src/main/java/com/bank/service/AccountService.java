@@ -1,6 +1,8 @@
 package com.bank.service;
 
 import com.bank.database.DatabaseConnection;
+import com.bank.model.dto.AccountDTO;
+import com.bank.model.dto.AccountMapper;
 import com.bank.model.enums.AccountStatus;
 import com.bank.model.enums.AccountType;
 import com.bank.model.enums.Currency;
@@ -37,9 +39,12 @@ public class AccountService {
         this.fraudDetectionService = fraudDetectionService;
     }
 
-    public Account createAccount(User owner, AccountType accountType, Currency currency) {
+    public BigDecimal getBalance(Long accountId, User requestingUser) {
+        Account account = getAccountById(accountId, requestingUser);
+        return account.getBalance();
+    }
+    public AccountDTO createAccount(User owner, AccountType accountType, Currency currency) {
         String accountNumber = AccountNumberGenerator.generate();
-
         while (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
             accountNumber = AccountNumberGenerator.generate();
         }
@@ -53,7 +58,8 @@ public class AccountService {
                 .status(AccountStatus.ACTIVE)
                 .build();
 
-        return accountRepository.save(account);
+        Account saved = accountRepository.save(account);
+        return AccountMapper.toDTO(saved);
     }
 
     public Account getAccountById(Long accountId, User requestingUser) {
@@ -64,13 +70,9 @@ public class AccountService {
         return account;
     }
 
-    public List<Account> getAccountsForUser(User user) {
-        return accountRepository.findByUserId(user.getUserId());
-    }
-
-    public BigDecimal getBalance(Long accountId, User requestingUser) {
-        Account account = getAccountById(accountId, requestingUser);
-        return account.getBalance();
+    public List<AccountDTO> getAccountsForUser(User user) {
+        List<Account> accounts = accountRepository.findByUserId(user.getUserId());
+        return AccountMapper.toDTOList(accounts);
     }
 
     /**

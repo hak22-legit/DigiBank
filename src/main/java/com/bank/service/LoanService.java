@@ -1,5 +1,7 @@
 package com.bank.service;
 
+import com.bank.model.dto.LoanDTO;
+import com.bank.model.dto.LoanMapper;
 import com.bank.model.enums.LoanStatus;
 import com.bank.model.enums.RiskLevel;
 import com.bank.exception.InvalidAmountException;
@@ -43,11 +45,10 @@ public class LoanService {
      * Takes the authenticated applicant directly (not a raw userId) so the
      * loan can never be created under someone else's identity.
      */
-    public Loan applyForLoan(User applicant, BigDecimal requestedAmount,
-                             BigDecimal monthlyIncome, BigDecimal monthlyExpense,
-                             BigDecimal existingDebt, Integer creditScore,
-                             Integer termMonths) {
-
+    public LoanDTO applyForLoan(User applicant, BigDecimal requestedAmount,
+                                BigDecimal monthlyIncome, BigDecimal monthlyExpense,
+                                BigDecimal existingDebt, Integer creditScore,
+                                Integer termMonths) {
         validateLoanApplication(requestedAmount, monthlyIncome, creditScore, termMonths);
 
         BigDecimal riskScore = calculateDeterministicRiskScore(
@@ -71,7 +72,8 @@ public class LoanService {
         Loan savedLoan = loanRepository.save(loan);
         logger.info("Loan application created: ID={}, Risk={}, Status={}",
                 savedLoan.getLoanId(), riskLevel, savedLoan.getStatus());
-        return savedLoan;
+
+        return LoanMapper.toDTO(savedLoan);
     }
 
     private void validateLoanApplication(BigDecimal requestedAmount, BigDecimal monthlyIncome,
@@ -144,17 +146,18 @@ public class LoanService {
         else return RiskLevel.HIGH;
     }
 
-    public List<Loan> getUserLoans(User requestingUser) {
-        return loanRepository.findByUserId(requestingUser.getUserId());
+    public List<LoanDTO> getUserLoans(User requestingUser) {
+        List<Loan> loans = loanRepository.findByUserId(requestingUser.getUserId());
+        return LoanMapper.toDTOList(loans);
     }
 
-    public Loan getLoanById(Long loanId, User requestingUser) {
+    public LoanDTO getLoanById(Long loanId, User requestingUser) {
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new LoanNotFoundException("Loan not found: " + loanId));
 
         if (!loan.getUserId().equals(requestingUser.getUserId())) {
             throw new UnauthorizedException("You do not have access to this loan");
         }
-        return loan;
+        return LoanMapper.toDTO(loan);
     }
 }
