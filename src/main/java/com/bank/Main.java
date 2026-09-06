@@ -58,6 +58,9 @@ public class Main {
     private static final LoanService loanService = new LoanService(loanRepo);
     private static final LoanApprovalService loanApprovalService =
             new LoanApprovalService(loanRepo, accountRepo, transactionRepo, auditLogService);
+    private static final LoanPaymentRepository loanPaymentRepo = new LoanPaymentRepositoryImpl();
+    private static final LoanRepaymentService loanRepaymentService =
+            new LoanRepaymentService(loanRepo, loanPaymentRepo, accountRepo, transactionRepo);
 
 
     public static void main(String[] args) {
@@ -195,7 +198,9 @@ public class Main {
         System.out.println("12. View my fraud alerts");
         System.out.println("13. Apply for a loan");
         System.out.println("14. My loans");
-        System.out.println("15. Logout");
+        System.out.println("15. Repay Loans");
+        System.out.println("16. View my loans history");
+        System.out.println("17. Logout");
         System.out.println("0. Exit");
         System.out.print("Choose: ");
 
@@ -215,7 +220,9 @@ public class Main {
             case "12" -> viewFraudAlerts();
             case "13" -> applyForLoanMenu();
             case "14" -> viewMyLoans();
-            case "15" -> {
+            case "15" -> repayLoanMenu();
+            case "16" -> viewLoanPaymentHistory();
+            case "17" -> {
                 authService.logout();
                 System.out.println("Logged out.");
             }
@@ -1030,6 +1037,71 @@ public class Main {
                         a.getAlertId(), a.getRiskLevel(), a.getStatus(), a.getDescription());
             }
             if (alerts.isEmpty()) System.out.println("(no fraud alerts)");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void repayLoanMenu() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            List<LoanDTO> loans = loanService.getUserLoans(user).stream()
+                    .filter(l -> l.getStatus() == LoanStatus.ACTIVE)
+                    .toList();
+
+            if (loans.isEmpty()) {
+                System.out.println("(no active loans to repay)");
+                return;
+            }
+
+            System.out.println("--- Active Loans ---");
+            for (int i = 0; i < loans.size(); i++) {
+                LoanDTO l = loans.get(i);
+                System.out.printf("[%d] Loan #%d | Outstanding: %s%n",
+                        i + 1, l.getLoanId(), l.getOutstandingBalance());
+            }
+            System.out.print("Select loan (number): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+            Long loanId = loans.get(idx).getLoanId();
+
+            AccountDTO account = selectAccount("Select account to pay from (number): ");
+            if (account == null) return;
+
+            System.out.print("Payment amount: ");
+            BigDecimal amount = new BigDecimal(scanner.nextLine().trim());
+
+            LoanDTO updated = loanRepaymentService.makePayment(user, loanId, account.getAccountId(), amount);
+            System.out.println("Payment successful! Outstanding balance: " + updated.getOutstandingBalance());
+            System.out.println("Loan status: " + updated.getStatus());
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void viewLoanPaymentHistory() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            List<LoanDTO> loans = loanService.getUserLoans(user);
+            if (loans.isEmpty()) {
+                System.out.println("(no loans)");
+                return;
+            }
+
+            System.out.println("--- Your Loans ---");
+            for (int i = 0; i < loans.size(); i++) {
+                System.out.println("  [" + (i + 1) + "] Loan #" + loans.get(i).getLoanId());
+            }
+            System.out.print("Select loan (number): ");
+            int idx = Integer.parseInt(scanner.nextLine().trim()) - 1;
+            Long loanId = loans.get(idx).getLoanId();
+
+            List<LoanPayment> payments = loanRepaymentService.getPaymentHistory(loanId, user);
+            System.out.println("--- Payment History for Loan #" + loanId + " ---");
+            for (LoanPayment p : payments) {
+                System.out.printf("[%s] Amount: %s | Principal: %s | Interest: %s%n",
+                        p.getPaymentDate(), p.getAmount(), p.getPrincipalAmount(), p.getInterestAmount());
+            }
+            if (payments.isEmpty()) System.out.println("(no payments made yet)");
         } catch (RuntimeException e) {
             System.out.println("Failed: " + e.getMessage());
         }

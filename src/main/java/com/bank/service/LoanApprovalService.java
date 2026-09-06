@@ -98,7 +98,11 @@ public class LoanApprovalService {
             loan.setStatus(LoanStatus.ACTIVE);
             loan.setApprovedBy(loanOfficer.getAdminId());
             loan.setApprovedAt(LocalDateTime.now());
-            loan.setOutstandingBalance(approvedAmount);
+            loan.setAccountId(disbursementAccountId);
+            loan.setApprovedAmount(approvedAmount);
+            loan.setInterestRate(interestRate);
+            loan.setTermMonths(termMonths);
+            loan.setOutstandingBalance(LoanFinanceUtil.calculateTotalObligation(loan)); // principal + total flat interest
 
             loanRepository.updateWithConnection(conn, loan);
 

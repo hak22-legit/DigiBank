@@ -167,7 +167,7 @@ com.bank
 ## Setup Instructions
 
 1. **Prerequisites**: Java 17+, Maven, a PostgreSQL database (this project uses [Neon](https://neon.tech), no local database required)
-2. Copy `src/main/resources/application.properties.example` to `application.properties` and fill in your database credentials
+2. Copy `src/main/resources/application.properties` to `application.properties` and fill in your database credentials
 3. Run migrations: `mvn flyway:migrate`
 4. Build and run: `mvn clean compile` then run `com.bank.Main`
 
