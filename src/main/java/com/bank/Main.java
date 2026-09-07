@@ -314,7 +314,8 @@ public class Main {
             Transaction txn = accountService.withdraw(account.getAccountId(), amount,
                     account.getCurrency(), desc, categoryId, user);
             System.out.println("Withdrawal successful. New balance: "
-                    + accountService.getBalance(account.getAccountId(), user));
+                    + accountService.getBalance
+                    (account.getAccountId(), user));
         } catch (RuntimeException e) {
             System.out.println("Withdrawal failed: " + e.getMessage());
         }
