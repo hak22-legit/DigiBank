@@ -18,6 +18,7 @@ public interface TransactionRepository {
     List<Transaction> findHistoryForAccount(Long accountId);
     Transaction save(Transaction transaction);
 
+
     /**
      * Insert within an existing transaction/connection (Phase 8-10 ACID operations).
      * If transaction.getIdempotencyKey() is null, a random UUID is auto-generated

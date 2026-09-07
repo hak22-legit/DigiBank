@@ -46,6 +46,8 @@ dependencies {
     implementation "org.slf4j:slf4j-api:${slf4jVersion}"
     implementation "ch.qos.logback:logback-classic:${logbackVersion}"
 
+    implementation 'net.sf.jasperreports:jasperreports:6.21.3'
+
     testImplementation "org.junit.jupiter:junit-jupiter:${junitVersion}"
     testImplementation "org.mockito:mockito-core:${mockitoVersion}"
     testImplementation "org.mockito:mockito-junit-jupiter:${mockitoVersion}"

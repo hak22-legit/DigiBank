@@ -21,23 +21,12 @@ import java.util.List;
 public class LoanService {
     private static final Logger logger = LoggerFactory.getLogger(LoanService.class);
 
-    private static final BigDecimal DTI_EXCELLENT_THRESHOLD = new BigDecimal("36");
-    private static final BigDecimal DTI_HIGH_THRESHOLD = new BigDecimal("50");
-
-    private static final int CREDIT_SCORE_EXCELLENT = 740;
-    private static final int CREDIT_SCORE_GOOD = 670;
-    private static final int CREDIT_SCORE_FAIR = 580;
-
-    private static final BigDecimal LTI_LOW_THRESHOLD = new BigDecimal("2");
-    private static final BigDecimal LTI_HIGH_THRESHOLD = new BigDecimal("4");
-
-    private static final BigDecimal RISK_LOW_MAX = new BigDecimal("30");
-    private static final BigDecimal RISK_MEDIUM_MAX = new BigDecimal("70");
-
     private final LoanRepository loanRepository;
+    private final RiskAssessmentService riskAssessmentService;
 
-    public LoanService(LoanRepository loanRepository) {
+    public LoanService(LoanRepository loanRepository, RiskAssessmentService riskAssessmentService) {
         this.loanRepository = loanRepository;
+        this.riskAssessmentService = riskAssessmentService;
     }
 
     /**
@@ -51,9 +40,10 @@ public class LoanService {
                                 Integer termMonths) {
         validateLoanApplication(requestedAmount, monthlyIncome, creditScore, termMonths);
 
-        BigDecimal riskScore = calculateDeterministicRiskScore(
-                requestedAmount, monthlyIncome, monthlyExpense, existingDebt, creditScore);
-        RiskLevel riskLevel = determineRiskLevel(riskScore);
+        RiskAssessmentResult assessment = riskAssessmentService.assess(
+                requestedAmount, monthlyIncome, monthlyExpense, existingDebt, creditScore, termMonths);
+        BigDecimal riskScore = assessment.getRiskScore();
+        RiskLevel riskLevel = assessment.getRiskLevel();
 
         Loan loan = Loan.builder()
                 .userId(applicant.getUserId())
@@ -70,8 +60,8 @@ public class LoanService {
                 .build();
 
         Loan savedLoan = loanRepository.save(loan);
-        logger.info("Loan application created: ID={}, Risk={}, Status={}",
-                savedLoan.getLoanId(), riskLevel, savedLoan.getStatus());
+        logger.info("Loan application created: ID={}, Risk={}, Prediction={}, Status={}",
+                savedLoan.getLoanId(), riskLevel, assessment.getPrediction(), savedLoan.getStatus());
 
         return LoanMapper.toDTO(savedLoan);
     }
@@ -92,59 +82,6 @@ public class LoanService {
         }
     }
 
-    private BigDecimal calculateDeterministicRiskScore(BigDecimal requestedAmount,
-                                                       BigDecimal monthlyIncome,
-                                                       BigDecimal monthlyExpense,
-                                                       BigDecimal existingDebt,
-                                                       Integer creditScore) {
-        BigDecimal creditRisk = calculateCreditRisk(creditScore);
-        BigDecimal dtiRisk = calculateDTIRisk(monthlyIncome, monthlyExpense, existingDebt);
-        BigDecimal ltiRisk = calculateLTIRisk(requestedAmount, monthlyIncome);
-
-        BigDecimal totalRisk = creditRisk.add(dtiRisk).add(ltiRisk);
-        if (totalRisk.compareTo(new BigDecimal("100")) > 0) {
-            totalRisk = new BigDecimal("100");
-        }
-        return totalRisk.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal calculateCreditRisk(Integer creditScore) {
-        if (creditScore >= CREDIT_SCORE_EXCELLENT) return BigDecimal.ZERO;
-        else if (creditScore >= CREDIT_SCORE_GOOD) return new BigDecimal("10");
-        else if (creditScore >= CREDIT_SCORE_FAIR) return new BigDecimal("25");
-        else return new BigDecimal("50");
-    }
-
-    private BigDecimal calculateDTIRisk(BigDecimal monthlyIncome, BigDecimal monthlyExpense,
-                                        BigDecimal existingDebt) {
-        if (monthlyIncome.compareTo(BigDecimal.ZERO) == 0) return new BigDecimal("30");
-
-        BigDecimal monthlyExistingDebt = existingDebt.divide(new BigDecimal("12"), 2, RoundingMode.HALF_UP);
-        BigDecimal totalMonthlyObligations = monthlyExpense.add(monthlyExistingDebt);
-        BigDecimal dti = totalMonthlyObligations
-                .divide(monthlyIncome, 4, RoundingMode.HALF_UP)
-                .multiply(new BigDecimal("100"));
-
-        if (dti.compareTo(DTI_EXCELLENT_THRESHOLD) < 0) return BigDecimal.ZERO;
-        else if (dti.compareTo(DTI_HIGH_THRESHOLD) < 0) return new BigDecimal("15");
-        else return new BigDecimal("30");
-    }
-
-    private BigDecimal calculateLTIRisk(BigDecimal requestedAmount, BigDecimal monthlyIncome) {
-        BigDecimal annualIncome = monthlyIncome.multiply(new BigDecimal("12"));
-        if (annualIncome.compareTo(BigDecimal.ZERO) == 0) return new BigDecimal("20");
-
-        BigDecimal lti = requestedAmount.divide(annualIncome, 2, RoundingMode.HALF_UP);
-        if (lti.compareTo(LTI_LOW_THRESHOLD) < 0) return BigDecimal.ZERO;
-        else if (lti.compareTo(LTI_HIGH_THRESHOLD) < 0) return new BigDecimal("10");
-        else return new BigDecimal("20");
-    }
-
-    private RiskLevel determineRiskLevel(BigDecimal riskScore) {
-        if (riskScore.compareTo(RISK_LOW_MAX) <= 0) return RiskLevel.LOW;
-        else if (riskScore.compareTo(RISK_MEDIUM_MAX) <= 0) return RiskLevel.MEDIUM;
-        else return RiskLevel.HIGH;
-    }
 
     public List<LoanDTO> getUserLoans(User requestingUser) {
         List<Loan> loans = loanRepository.findByUserId(requestingUser.getUserId());

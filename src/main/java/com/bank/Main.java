@@ -10,11 +10,13 @@ import com.bank.model.dto.UserDTO;
 import com.bank.model.entity.*;
 import com.bank.model.enums.*;
 import com.bank.model.repository.*;
+import com.bank.report.StatementReportService;
 import com.bank.security.SessionManager;
 import com.bank.service.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
@@ -55,12 +57,15 @@ public class Main {
     private static final FraudInvestigationService fraudInvestigationService =
             new FraudInvestigationService(fraudAlertRepo, accountRepo, auditLogRepo, auditLogService);
     private static final LoanRepository loanRepo = new LoanRepositoryImpl();
-    private static final LoanService loanService = new LoanService(loanRepo);
+    private static final RiskAssessmentService riskAssessmentService = new RiskAssessmentService();
+    private static final LoanService loanService = new LoanService(loanRepo, riskAssessmentService);
     private static final LoanApprovalService loanApprovalService =
             new LoanApprovalService(loanRepo, accountRepo, transactionRepo, auditLogService);
     private static final LoanPaymentRepository loanPaymentRepo = new LoanPaymentRepositoryImpl();
     private static final LoanRepaymentService loanRepaymentService =
             new LoanRepaymentService(loanRepo, loanPaymentRepo, accountRepo, transactionRepo);
+    private static final StatementReportService statementReportService =
+            new StatementReportService(transactionRepo);
 
 
     public static void main(String[] args) {
@@ -222,7 +227,8 @@ public class Main {
             case "14" -> viewMyLoans();
             case "15" -> repayLoanMenu();
             case "16" -> viewLoanPaymentHistory();
-            case "17" -> {
+            case "17" -> exportStatementMenu();
+            case "18" -> {
                 authService.logout();
                 System.out.println("Logged out.");
             }
@@ -1102,6 +1108,29 @@ public class Main {
                         p.getPaymentDate(), p.getAmount(), p.getPrincipalAmount(), p.getInterestAmount());
             }
             if (payments.isEmpty()) System.out.println("(no payments made yet)");
+        } catch (RuntimeException e) {
+            System.out.println("Failed: " + e.getMessage());
+        }
+    }
+
+    private static void exportStatementMenu() {
+        try {
+            User user = SessionManager.getCurrentUser();
+            AccountDTO account = selectAccount("Select account for statement (number): ");
+            if (account == null) return;
+
+            System.out.print("From date (yyyy-MM-dd): ");
+            String fromStr = scanner.nextLine().trim();
+            System.out.print("To date (yyyy-MM-dd): ");
+            String toStr = scanner.nextLine().trim();
+
+            LocalDateTime from = java.time.LocalDate.parse(fromStr).atStartOfDay();
+            LocalDateTime to = java.time.LocalDate.parse(toStr).atTime(23, 59, 59);
+
+            String path = statementReportService.generateStatement(
+                    user.getFullName(), account, from, to);
+
+            System.out.println("Statement generated: " + path);
         } catch (RuntimeException e) {
             System.out.println("Failed: " + e.getMessage());
         }

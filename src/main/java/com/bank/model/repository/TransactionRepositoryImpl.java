@@ -90,26 +90,26 @@ public class TransactionRepositoryImpl implements TransactionRepository {
 
     @Override
     public List<Transaction> findByAccountIdAndDateRange(Long accountId, LocalDateTime from, LocalDateTime to) {
-        String sql = """
-            SELECT * FROM transactions
-            WHERE account_id = ? AND transaction_date BETWEEN ? AND ?
-            ORDER BY transaction_date DESC
-            """;
-        List<Transaction> transactions = new ArrayList<>();
-
+        String sql = "SELECT * FROM transactions " +
+                "WHERE (account_id = ? OR related_account_id = ?) " +
+                "AND transaction_date BETWEEN ? AND ? " +
+                "ORDER BY transaction_date ASC";
+        List<Transaction> results = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setLong(1, accountId);
-            stmt.setTimestamp(2, Timestamp.valueOf(from));
-            stmt.setTimestamp(3, Timestamp.valueOf(to));
+            stmt.setLong(2, accountId);
+            stmt.setTimestamp(3, Timestamp.valueOf(from));
+            stmt.setTimestamp(4, Timestamp.valueOf(to));
             try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) transactions.add(mapRow(rs));
+                while (rs.next()) {
+                    results.add(mapRow(rs)); // ប្រើ private mapRow() ដែលមានស្រាប់ក្នុងឯកសារនេះ
+                }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Error finding transactions by date range", e);
+            throw new RuntimeException("Failed to fetch transactions for statement", e);
         }
-        return transactions;
+        return results;
     }
 
     @Override
