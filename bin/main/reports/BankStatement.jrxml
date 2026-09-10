@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd"
+              name="BankStatement" pageWidth="595" pageHeight="842" columnWidth="535"
+              leftMargin="30" rightMargin="30" topMargin="30" bottomMargin="30">
+
+    <parameter name="CUSTOMER_NAME" class="java.lang.String"/>
+    <parameter name="ACCOUNT_NUMBER" class="java.lang.String"/>
+    <parameter name="STATEMENT_PERIOD" class="java.lang.String"/>
+    <parameter name="OPENING_BALANCE" class="java.math.BigDecimal"/>
+    <parameter name="CLOSING_BALANCE" class="java.math.BigDecimal"/>
+
+    <field name="transactionDate" class="java.time.LocalDateTime"/>
+    <field name="description" class="java.lang.String"/>
+    <field name="transactionType" class="java.lang.String"/>
+    <field name="amount" class="java.math.BigDecimal"/>
+    <field name="runningBalance" class="java.math.BigDecimal"/>
+
+    <title>
+        <band height="100">
+            <staticText>
+                <reportElement x="0" y="0" width="535" height="30"/>
+                <textElement textAlignment="Center">
+                    <font size="18" isBold="true"/>
+                </textElement>
+                <text><![CDATA[DigiBank]]></text>
+            </staticText>
+
+            <staticText>
+                <reportElement x="0" y="30" width="535" height="20"/>
+                <textElement textAlignment="Center">
+                    <font size="12"/>
+                </textElement>
+                <text><![CDATA[Account Statement]]></text>
+            </staticText>
+
+            <textField>
+                <reportElement x="0" y="55" width="535" height="15"/>
+                <textElement textAlignment="Center"/>
+                <textFieldExpression><![CDATA["Customer: " + $P{CUSTOMER_NAME} + "   |   Account: " + $P{ACCOUNT_NUMBER}]]></textFieldExpression>
+            </textField>
+
+            <textField>
+                <reportElement x="0" y="72" width="535" height="15"/>
+                <textElement textAlignment="Center"/>
+                <textFieldExpression><![CDATA["Statement Period: " + $P{STATEMENT_PERIOD}]]></textFieldExpression>
+            </textField>
+        </band>
+    </title>
+
+    <columnHeader>
+        <band height="20">
+            <staticText>
+                <reportElement x="0" y="0" width="90" height="20"/>
+                <textElement><font isBold="true" size="9"/></textElement>
+                <text><![CDATA[Date]]></text>
+            </staticText>
+            <staticText>
+                <reportElement x="90" y="0" width="150" height="20"/>
+                <textElement><font isBold="true" size="9"/></textElement>
+                <text><![CDATA[Description]]></text>
+            </staticText>
+            <staticText>
+                <reportElement x="240" y="0" width="110" height="20"/>
+                <textElement><font isBold="true" size="9"/></textElement>
+                <text><![CDATA[Type]]></text>
+            </staticText>
+            <staticText>
+                <reportElement x="350" y="0" width="90" height="20"/>
+                <textElement textAlignment="Right"><font isBold="true" size="9"/></textElement>
+                <text><![CDATA[Amount]]></text>
+            </staticText>
+            <staticText>
+                <reportElement x="440" y="0" width="95" height="20"/>
+                <textElement textAlignment="Right"><font isBold="true" size="9"/></textElement>
+                <text><![CDATA[Balance]]></text>
+            </staticText>
+        </band>
+    </columnHeader>
+
+    <detail>
+        <band height="18">
+            <textField>
+                <reportElement x="0" y="0" width="90" height="18"/>
+                <textElement><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{transactionDate}.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))]]></textFieldExpression>
+            </textField>
+            <textField>
+                <reportElement x="90" y="0" width="150" height="18"/>
+                <textElement><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{description}]]></textFieldExpression>
+            </textField>
+            <textField>
+                <reportElement x="240" y="0" width="110" height="18"/>
+                <textElement><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{transactionType}]]></textFieldExpression>
+            </textField>
+            <textField pattern="#,##0.00">
+                <reportElement x="350" y="0" width="90" height="18"/>
+                <textElement textAlignment="Right"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{amount}]]></textFieldExpression>
+            </textField>
+            <textField pattern="#,##0.00">
+                <reportElement x="440" y="0" width="95" height="18"/>
+                <textElement textAlignment="Right"><font size="8"/></textElement>
+                <textFieldExpression><![CDATA[$F{runningBalance}]]></textFieldExpression>
+            </textField>
+        </band>
+    </detail>
+
+    <summary>
+        <band height="50">
+            <line>
+                <reportElement x="0" y="5" width="535" height="1"/>
+            </line>
+            <staticText>
+                <reportElement x="350" y="15" width="90" height="20"/>
+                <textElement textAlignment="Right"><font isBold="true" size="10"/></textElement>
+                <text><![CDATA[Opening Balance:]]></text>
+            </staticText>
+            <textField pattern="#,##0.00">
+                <reportElement x="440" y="15" width="95" height="20"/>
+                <textElement textAlignment="Right"><font size="10"/></textElement>
+                <textFieldExpression><![CDATA[$P{OPENING_BALANCE}]]></textFieldExpression>
+            </textField>
+            <staticText>
+                <reportElement x="350" y="30" width="90" height="20"/>
+                <textElement textAlignment="Right"><font isBold="true" size="10"/></textElement>
+                <text><![CDATA[Closing Balance:]]></text>
+            </staticText>
+            <textField pattern="#,##0.00">
+                <reportElement x="440" y="30" width="95" height="20"/>
+                <textElement textAlignment="Right"><font isBold="true" size="10"/></textElement>
+                <textFieldExpression><![CDATA[$P{CLOSING_BALANCE}]]></textFieldExpression>
+            </textField>
+        </band>
+    </summary>
+
+</jasperReport>

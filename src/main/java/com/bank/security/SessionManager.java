@@ -36,6 +36,16 @@ public class SessionManager {
         return currentAdmin != null;
     }
 
+    // --- ADD THIS METHOD ---
+    public static void clearAdminSession() {
+        currentAdmin = null;
+    }
+
+    // --- ADD THIS IF YOU ALSO NEED clearUserSession() ---
+    public static void clearUserSession() {
+        currentUser = null;
+    }
+
     public static void logout() {
         clear();
     }

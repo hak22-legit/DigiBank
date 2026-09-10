@@ -42,6 +42,30 @@ public class DatabaseConnection {
         return dataSource.getConnection();
     }
 
+    public static HikariDataSource getDataSource() {
+        return dataSource;
+    }
+
+    public static int getActiveConnections() {
+        return (dataSource != null && dataSource.getHikariPoolMXBean() != null)
+                ? dataSource.getHikariPoolMXBean().getActiveConnections() : 0;
+    }
+
+    public static int getIdleConnections() {
+        return (dataSource != null && dataSource.getHikariPoolMXBean() != null)
+                ? dataSource.getHikariPoolMXBean().getIdleConnections() : 0;
+    }
+
+    public static int getTotalConnections() {
+        return (dataSource != null && dataSource.getHikariPoolMXBean() != null)
+                ? dataSource.getHikariPoolMXBean().getTotalConnections() : 0;
+    }
+
+    public static int getThreadsAwaitingConnection() {
+        return (dataSource != null && dataSource.getHikariPoolMXBean() != null)
+                ? dataSource.getHikariPoolMXBean().getThreadsAwaitingConnection() : 0;
+    }
+
     public static void closePool() {
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
