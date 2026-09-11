@@ -4,6 +4,7 @@ import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
 import com.bank.console.components.ConsolePrompt;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -80,11 +81,6 @@ public class LoanRepaymentScreen implements Screen {
                         .findFirst().orElse(null) : null;
 
                 StringBuilder sb = new StringBuilder();
-                if (firstRender) {
-                    sb.append(ConsoleTheme.CLEAR_SCREEN);
-                } else {
-                    sb.append("\u001B[H");
-                }
 
                 sb.append(TUIBox.top(width)).append("\n");
                 sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > LOAN REPAYMENT & INSTALLMENT SCHEDULE"), width)).append("\n");
@@ -107,8 +103,7 @@ public class LoanRepaymentScreen implements Screen {
                     }
                     sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1/0] Quick Select  •  [Esc] Back")).append("\n");
 
-                    System.out.print(sb.toString());
-                    System.out.flush();
+                    ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
 
                     int ch = reader.read();
@@ -215,8 +210,7 @@ public class LoanRepaymentScreen implements Screen {
                 }
                 sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1/0] Quick Select  •  [Esc] Back")).append("\n");
 
-                System.out.print(sb.toString());
-                System.out.flush();
+                ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
                 int ch = reader.read();

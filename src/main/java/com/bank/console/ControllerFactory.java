@@ -49,6 +49,7 @@ public final class ControllerFactory {
     private static AdminService adminService;
     private static FraudInvestigationService fraudInvestigationService;
     private static StatementReportService statementReportService;
+    private static LiveCurrencyService liveCurrencyService;
 
     // Controllers (10)
     private static AuthController authController;
@@ -91,9 +92,10 @@ public final class ControllerFactory {
         transactionRepository = new TransactionRepositoryImpl();
 
         // 2. Services
+        liveCurrencyService = new LiveCurrencyService();
         auditLogService = new AuditLogService(auditLogRepository);
         fraudDetectionService = new FraudDetectionService(fraudAlertRepository, transactionRepository);
-        accountService = new AccountService(accountRepository, transactionRepository, fraudDetectionService);
+        accountService = new AccountService(accountRepository, transactionRepository, fraudDetectionService, liveCurrencyService);
         authenticationService = new AuthenticationService(userRepository, adminRepository, accountService, auditLogService);
         authService = new AuthService(userRepository, accountService);
         adminAuthService = new AdminAuthService(adminRepository, auditLogService);
@@ -107,7 +109,7 @@ public final class ControllerFactory {
         loanService = new LoanService(loanRepository, riskAssessmentService);
         loanApprovalService = new LoanApprovalService(loanRepository, accountRepository, transactionRepository, auditLogService);
         loanRepaymentService = new LoanRepaymentService(loanRepository, loanPaymentRepository, accountRepository, transactionRepository);
-        currencyExchangeService = new CurrencyExchangeService(accountRepository, transactionRepository);
+        currencyExchangeService = new CurrencyExchangeService(accountRepository, transactionRepository, liveCurrencyService);
         adminService = new AdminService(adminRepository, userRepository, accountRepository, transactionRepository, fraudAlertRepository, auditLogService);
         fraudInvestigationService = new FraudInvestigationService(fraudAlertRepository, accountRepository, auditLogRepository, auditLogService);
         statementReportService = new StatementReportService(transactionRepository);
@@ -270,6 +272,11 @@ public final class ControllerFactory {
     public static synchronized StatementReportService getStatementReportService() {
         ensureInitialized();
         return statementReportService;
+    }
+
+    public static synchronized LiveCurrencyService getLiveCurrencyService() {
+        ensureInitialized();
+        return liveCurrencyService;
     }
 
     public static synchronized UserRepository getUserRepository() {

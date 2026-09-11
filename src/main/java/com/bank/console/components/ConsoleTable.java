@@ -25,8 +25,8 @@ public class ConsoleTable {
         return this;
     }
 
-    public void print() {
-        if (headers.isEmpty()) return;
+    public String render() {
+        if (headers.isEmpty()) return "";
 
         int cols = headers.size();
         int[] widths = new int[cols];
@@ -44,19 +44,22 @@ public class ConsoleTable {
             }
         }
 
+        StringBuilder sb = new StringBuilder();
+
         // Top Border
-        printDivider('┌', '┬', '┐', widths);
+        appendDivider(sb, '┌', '┬', '┐', widths);
 
         // Header Row
-        System.out.print(ConsoleTheme.border("│"));
+        sb.append(ConsoleTheme.border("│"));
         for (int i = 0; i < cols; i++) {
-            System.out.print(" " + ConsoleTheme.BOLD + ConsoleTheme.FG_DEFAULT +
-                    pad(headers.get(i), widths[i], alignRight.get(i)) + ConsoleTheme.RESET + " " + ConsoleTheme.border("│"));
+            sb.append(" ").append(ConsoleTheme.BOLD).append(ConsoleTheme.FG_DEFAULT)
+              .append(pad(headers.get(i), widths[i], alignRight.get(i)))
+              .append(ConsoleTheme.RESET).append(" ").append(ConsoleTheme.border("│"));
         }
-        System.out.println();
+        sb.append("\n");
 
         // Divider
-        printDivider('├', '┼', '┤', widths);
+        appendDivider(sb, '├', '┼', '┤', widths);
 
         // Data Rows
         if (rows.isEmpty()) {
@@ -66,33 +69,41 @@ public class ConsoleTable {
             String empty = "No records found";
             int padL = Math.max(0, (total - empty.length()) / 2);
             int padR = Math.max(0, total - padL - empty.length());
-            System.out.println(ConsoleTheme.border("│") + " ".repeat(padL) + ConsoleTheme.muted(empty) + " ".repeat(padR) + ConsoleTheme.border("│"));
+            sb.append(ConsoleTheme.border("│")).append(" ".repeat(padL))
+              .append(ConsoleTheme.muted(empty)).append(" ".repeat(padR))
+              .append(ConsoleTheme.border("│")).append("\n");
         } else {
             for (List<String> row : rows) {
-                System.out.print(ConsoleTheme.border("│"));
+                sb.append(ConsoleTheme.border("│"));
                 for (int i = 0; i < cols; i++) {
                     String val = i < row.size() ? row.get(i) : "";
-                    System.out.print(" " + pad(val, widths[i], alignRight.get(i)) + " " + ConsoleTheme.border("│"));
+                    sb.append(" ").append(pad(val, widths[i], alignRight.get(i))).append(" ").append(ConsoleTheme.border("│"));
                 }
-                System.out.println();
+                sb.append("\n");
             }
         }
 
         // Bottom Border
-        printDivider('└', '┴', '┘', widths);
+        appendDivider(sb, '└', '┴', '┘', widths);
+
+        return sb.toString();
     }
 
-    private void printDivider(char left, char mid, char right, int[] widths) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(left);
+    public void print() {
+        System.out.print(TUILayout.indentLines(render()));
+    }
+
+    private void appendDivider(StringBuilder sb, char left, char mid, char right, int[] widths) {
+        StringBuilder div = new StringBuilder();
+        div.append(left);
         for (int i = 0; i < widths.length; i++) {
-            sb.append(String.valueOf(TUIBox.H).repeat(widths[i] + 2));
+            div.append(String.valueOf(TUIBox.H).repeat(widths[i] + 2));
             if (i < widths.length - 1) {
-                sb.append(mid);
+                div.append(mid);
             }
         }
-        sb.append(right);
-        System.out.println(ConsoleTheme.border(sb.toString()));
+        div.append(right);
+        sb.append(ConsoleTheme.border(div.toString())).append("\n");
     }
 
     private String pad(String s, int width, boolean right) {

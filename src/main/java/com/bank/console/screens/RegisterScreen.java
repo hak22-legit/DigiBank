@@ -3,10 +3,7 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
-import com.bank.console.components.ConsoleFormatter;
-import com.bank.console.components.ConsolePrompt;
-import com.bank.console.components.TUIBox;
-import com.bank.console.components.TUILayout;
+import com.bank.console.components.*;
 import com.bank.console.theme.ConsoleTheme;
 import com.bank.controller.AuthController;
 import com.bank.model.dto.UserDTO;
@@ -39,38 +36,38 @@ public class RegisterScreen implements Screen {
 
     @Override
     public void render(ScreenNavigator navigator, TUISession session) {
-        session.clearScreen();
         int width = TUILayout.APP_WIDTH;
-
-        // Render Screen 3 Mockup Frame
-        System.out.println(TUIBox.top(width));
-        System.out.println(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > NEW CUSTOMER REGISTRATION"), width));
-        System.out.println(TUIBox.divider(width));
-        System.out.println(TUIBox.line("CUSTOMER PROFILE (users table)", width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.line("  1. Full Legal Name    : [                                                ]", width));
-        System.out.println(TUIBox.line("  2. Desired Username   : [                                                ]", width));
-        System.out.println(TUIBox.line("  3. Email Address      : [                                                ]", width));
-        System.out.println(TUIBox.line("  4. Phone Number       : [                                                ]", width));
-        System.out.println(TUIBox.line("  5. Password           : [                                                ]", width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.divider(width));
-        System.out.println(TUIBox.line("INITIAL ACCOUNT (accounts table)", width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.line("  6. Account Type       : [ (•) SAVINGS      ( ) CHECKING                  ]", width));
-        System.out.println(TUIBox.line("  7. Primary Currency   : [ (•) USD          ( ) KHR                       ]", width));
-        System.out.println(TUIBox.line("  8. Initial Deposit    : [ $ 100.00                                       ]", width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.divider(width));
-        System.out.println(TUIBox.line("  ► " + ConsoleTheme.highlight("[SUBMIT REGISTRATION]") + "                   " + ConsoleTheme.muted("[CANCEL & RETURN]"), width));
-        System.out.println(TUIBox.bottom(width));
-        System.out.println(" Passwords encrypted via BCrypt ($2a$12$). Account numbers are auto-generated.");
+        StringBuilder sb = new StringBuilder();
+        sb.append(TUIBox.top(width)).append("\n");
+        sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > NEW CUSTOMER REGISTRATION"), width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.line("CUSTOMER PROFILE (users table)", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.line("  1. Full Legal Name    : [                                                ]", width)).append("\n");
+        sb.append(TUIBox.line("  2. Desired Username   : [                                                ]", width)).append("\n");
+        sb.append(TUIBox.line("  3. Email Address      : [                                                ]", width)).append("\n");
+        sb.append(TUIBox.line("  4. Phone Number       : [                                                ]", width)).append("\n");
+        sb.append(TUIBox.line("  5. Password           : [                                                ]", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.line("INITIAL ACCOUNT (accounts table)", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.line("  6. Account Type       : [ (•) SAVINGS      ( ) CHECKING                  ]", width)).append("\n");
+        sb.append(TUIBox.line("  7. Primary Currency   : [ (•) USD          ( ) KHR                       ]", width)).append("\n");
+        sb.append(TUIBox.line("  8. Initial Deposit    : [ $ 100.00                                       ]", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.line("  ► " + ConsoleTheme.highlight("[SUBMIT REGISTRATION]") + "                   " + ConsoleTheme.muted("[CANCEL & RETURN]"), width)).append("\n");
+        sb.append(TUIBox.bottom(width)).append("\n");
+        sb.append(" Passwords encrypted via BCrypt ($2a$12$). Account numbers are auto-generated.").append("\n");
         if (statusMessage != null) {
             String msg = isErrorStatus ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage);
-            System.out.println(" Status: " + msg);
+            sb.append(" Status: ").append(msg).append("\n");
             statusMessage = null;
         }
-        System.out.println(TUIBox.rule(width));
+        sb.append(TUIBox.rule(width)).append("\n");
+
+        ScreenRenderer.render(sb.toString(), true);
 
         // Prompt inputs
         String fullName = ConsolePrompt.promptText("1. Full Legal Name (or '0' to return)");
@@ -128,21 +125,22 @@ public class RegisterScreen implements Screen {
                 }
             }
 
-            session.clearScreen();
-            System.out.println(TUIBox.top(width));
-            System.out.println(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > REGISTRATION COMPLETE"), width));
-            System.out.println(TUIBox.divider(width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.center(ConsoleTheme.success("✔ Registration Approved & Initial Account Provisioned!"), width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.line("  Customer Name : " + ConsoleTheme.highlight(newUser.getFullName()), width));
-            System.out.println(TUIBox.line("  Username      : " + newUser.getUsername(), width));
-            System.out.println(TUIBox.line("  Account Type  : " + accType + " (" + currency + ")", width));
-            System.out.println(TUIBox.line("  Initial Fund  : " + ConsoleFormatter.formatCurrency(depositAmount) + " " + currency, width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.bottom(width));
-            System.out.println(" Status: Account successfully created. Proceeding to Sign In...");
-            System.out.println(TUIBox.rule(width));
+            StringBuilder successSb = new StringBuilder();
+            successSb.append(TUIBox.top(width)).append("\n");
+            successSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > REGISTRATION COMPLETE"), width)).append("\n");
+            successSb.append(TUIBox.divider(width)).append("\n");
+            successSb.append(TUIBox.emptyLine(width)).append("\n");
+            successSb.append(TUIBox.center(ConsoleTheme.success("✔ Registration Approved & Initial Account Provisioned!"), width)).append("\n");
+            successSb.append(TUIBox.emptyLine(width)).append("\n");
+            successSb.append(TUIBox.line("  Customer Name : " + ConsoleTheme.highlight(newUser.getFullName()), width)).append("\n");
+            successSb.append(TUIBox.line("  Username      : " + newUser.getUsername(), width)).append("\n");
+            successSb.append(TUIBox.line("  Account Type  : " + accType + " (" + currency + ")", width)).append("\n");
+            successSb.append(TUIBox.line("  Initial Fund  : " + ConsoleFormatter.formatCurrency(depositAmount) + " " + currency, width)).append("\n");
+            successSb.append(TUIBox.emptyLine(width)).append("\n");
+            successSb.append(TUIBox.bottom(width)).append("\n");
+            successSb.append(" Status: Account successfully created. Proceeding to Sign In...").append("\n");
+            successSb.append(TUIBox.rule(width)).append("\n");
+            ScreenRenderer.render(successSb.toString(), true);
 
             ConsolePrompt.pause("Press Enter to proceed to Sign In...");
             navigator.clearAndPush(new LoginScreen());

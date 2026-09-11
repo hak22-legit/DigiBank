@@ -3,6 +3,7 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -136,12 +137,6 @@ public class LoginScreen implements Screen {
 
     private void renderForm(TUISession session, String username, String password, int focusIndex, boolean firstRender) {
         StringBuilder sb = new StringBuilder();
-        if (firstRender) {
-            sb.append(ConsoleTheme.CLEAR_SCREEN);
-        } else {
-            sb.append("\u001B[H"); // Cursor Home
-        }
-
         int width = TUILayout.APP_WIDTH;
 
         // Render Screen 2 Box
@@ -187,8 +182,7 @@ public class LoginScreen implements Screen {
         sb.append(" Status: ").append(statusDisplay).append(" ".repeat(Math.max(0, width - 10 - TUIBox.stripAnsi(statusDisplay).length()))).append("\n");
         sb.append(TUIBox.rule(width)).append("\n");
 
-        System.out.print(sb.toString());
-        System.out.flush();
+        ScreenRenderer.render(sb.toString(), firstRender);
     }
 
     private boolean attemptLogin(String username, String password, ScreenNavigator navigator,
@@ -217,20 +211,21 @@ public class LoginScreen implements Screen {
                 session.setCurrentAdmin(authUser.getAdminDTO());
             }
 
-            session.clearScreen();
             int width = TUILayout.APP_WIDTH;
-            System.out.println(TUIBox.top(width));
-            System.out.println(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > AUTHENTICATION APPROVED"), width));
-            System.out.println(TUIBox.divider(width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.center("Welcome, " + ConsoleTheme.highlight(authUser.getFullName()), width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.center(ConsoleTheme.info("Role: " + authUser.getRole() +
-                    (authUser.getSpecificRole() != null ? " (" + authUser.getSpecificRole() + ")" : "")), width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.center(ConsoleTheme.muted("Loading your dashboard..."), width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.bottom(width));
+            StringBuilder authSb = new StringBuilder();
+            authSb.append(TUIBox.top(width)).append("\n");
+            authSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > AUTHENTICATION APPROVED"), width)).append("\n");
+            authSb.append(TUIBox.divider(width)).append("\n");
+            authSb.append(TUIBox.emptyLine(width)).append("\n");
+            authSb.append(TUIBox.center("Welcome, " + ConsoleTheme.highlight(authUser.getFullName()), width)).append("\n");
+            authSb.append(TUIBox.emptyLine(width)).append("\n");
+            authSb.append(TUIBox.center(ConsoleTheme.info("Role: " + authUser.getRole() +
+                    (authUser.getSpecificRole() != null ? " (" + authUser.getSpecificRole() + ")" : "")), width)).append("\n");
+            authSb.append(TUIBox.emptyLine(width)).append("\n");
+            authSb.append(TUIBox.center(ConsoleTheme.muted("Loading your dashboard..."), width)).append("\n");
+            authSb.append(TUIBox.emptyLine(width)).append("\n");
+            authSb.append(TUIBox.bottom(width)).append("\n");
+            ScreenRenderer.render(authSb.toString(), true);
 
             try {
                 Thread.sleep(600);

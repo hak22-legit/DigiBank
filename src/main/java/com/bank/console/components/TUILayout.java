@@ -30,8 +30,39 @@ public final class TUILayout {
         return sb.toString();
     }
 
+    public static int getLeftPadding() {
+        return ScreenRenderer.getLeftPadding();
+    }
+
+    public static int getTopPadding(int boxHeight) {
+        return ScreenRenderer.getTopPadding(boxHeight);
+    }
+
+    public static String getIndent() {
+        return ScreenRenderer.getLeftPaddingSpaces();
+    }
+
+    public static String indentLines(String text) {
+        if (text == null || text.isEmpty()) return text;
+        String indent = getIndent();
+        if (indent.isEmpty()) return text;
+        StringBuilder sb = new StringBuilder();
+        String[] lines = text.split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            if (i == lines.length - 1 && lines[i].isEmpty()) {
+                continue;
+            }
+            sb.append(indent).append(lines[i]).append("\n");
+        }
+        return sb.toString();
+    }
+
+    public static void renderCentered(String content, boolean firstRender) {
+        ScreenRenderer.render(content, firstRender);
+    }
+
     public static void printHeader(String userOrRole) {
-        System.out.print(header(userOrRole));
+        System.out.print(indentLines(header(userOrRole)));
     }
 
     public static String screenTitle(String title) {
@@ -45,7 +76,7 @@ public final class TUILayout {
     }
 
     public static void printScreenTitle(String title) {
-        System.out.print(screenTitle(title));
+        System.out.print(indentLines(screenTitle(title)));
     }
 
     public static String footer(String hints) {
@@ -59,7 +90,7 @@ public final class TUILayout {
     }
 
     public static void printFooter(String hints) {
-        System.out.print(footer(hints));
+        System.out.print(indentLines(footer(hints)));
     }
 
     public static String alert(String message, boolean isError) {
@@ -69,6 +100,6 @@ public final class TUILayout {
     }
 
     public static void printAlert(String message, boolean isError) {
-        System.out.print(alert(message, isError));
+        System.out.print(indentLines(alert(message, isError)));
     }
 }

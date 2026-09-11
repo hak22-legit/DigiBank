@@ -4,6 +4,7 @@ import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
 import com.bank.console.components.ConsolePrompt;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -70,11 +71,6 @@ public class AdminDashboardScreen implements Screen {
         try {
             while (true) {
                 StringBuilder sb = new StringBuilder();
-                if (firstRender) {
-                    sb.append(ConsoleTheme.CLEAR_SCREEN);
-                } else {
-                    sb.append("\u001B[H");
-                }
 
                 // Top Border
                 sb.append(TUIBox.top(width)).append("\n");
@@ -189,8 +185,7 @@ public class AdminDashboardScreen implements Screen {
                 }
                 sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1-5] Quick Select  •  [Esc] Logout")).append("\n");
 
-                System.out.print(sb.toString());
-                System.out.flush();
+                ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
                 int ch = reader.read();

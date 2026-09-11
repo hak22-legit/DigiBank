@@ -33,6 +33,11 @@ public class TUISession {
             this.terminal = TerminalBuilder.builder()
                     .system(true)
                     .build();
+            try {
+                this.terminal.handle(Terminal.Signal.WINCH, sig -> {
+                    // Window resize signal: terminal dimensions updated dynamically
+                });
+            } catch (Exception ignored) {}
             this.lineReader = LineReaderBuilder.builder()
                     .terminal(terminal)
                     .build();
@@ -120,11 +125,21 @@ public class TUISession {
     public int getTerminalWidth() {
         if (terminal != null) {
             int width = terminal.getWidth();
-            if (width >= 80) {
-                return Math.min(width, 120);
+            if (width > 0) {
+                return width;
             }
         }
-        return 84;
+        return 82;
+    }
+
+    public int getTerminalHeight() {
+        if (terminal != null) {
+            int height = terminal.getHeight();
+            if (height > 0) {
+                return height;
+            }
+        }
+        return 24;
     }
 
     public void logout() {

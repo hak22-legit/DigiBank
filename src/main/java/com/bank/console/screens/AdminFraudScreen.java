@@ -39,13 +39,12 @@ public class AdminFraudScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
-        TUILayout.printHeader("Compliance: " + adminDto.getUsername() + " (" + adminDto.getRole() + ")");
-        TUILayout.printScreenTitle("Fraud Detection & Alert Investigations");
+        ConsoleMenu menu = new ConsoleMenu()
+                .setHeaderSubtitle("Compliance: " + adminDto.getUsername() + " (" + adminDto.getRole() + ")")
+                .setScreenTitle("Fraud Detection & Alert Investigations");
 
         if (statusMessage != null) {
-            TUILayout.printAlert(statusMessage, isErrorStatus);
-            System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
+            menu.setAlert(statusMessage, isErrorStatus);
             statusMessage = null;
         }
 
@@ -53,7 +52,7 @@ public class AdminFraudScreen implements Screen {
         try {
             alerts = adminController.getAllFraudAlerts(adminEntity);
         } catch (Exception e) {
-            TUILayout.printAlert("Failed to load fraud alerts: " + e.getMessage(), true);
+            menu.setAlert("Failed to load fraud alerts: " + e.getMessage(), true);
         }
 
         ConsoleTable table = new ConsoleTable()
@@ -86,15 +85,12 @@ public class AdminFraudScreen implements Screen {
 
                 table.addRow(id, acc, tx, risk, stat, desc);
             }
-            table.print();
+            menu.setCustomContent(table.render());
         } else {
-            System.out.println(TUIBox.center(ConsoleTheme.muted("No fraud alerts recorded in the system. All systems normal."), TUILayout.APP_WIDTH));
+            menu.setCustomContent(TUIBox.center(ConsoleTheme.muted("No fraud alerts recorded in the system. All systems normal."), TUILayout.APP_WIDTH) + "\n");
         }
 
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-
-        ConsoleMenu menu = new ConsoleMenu()
-                .addItem("01", "Investigate Alert", "Mark open alert as actively being investigated")
+        menu.addItem("01", "Investigate Alert", "Mark open alert as actively being investigated")
                 .addItem("02", "Resolve Alert", "Close alert with notes as resolved or confirmed fraud")
                 .addItem("03", "Freeze Account", "Restrict compromised account immediately")
                 .addItem("04", "Unfreeze Account", "Restore normal account status after review")

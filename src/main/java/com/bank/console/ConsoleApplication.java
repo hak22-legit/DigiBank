@@ -1,7 +1,6 @@
 package com.bank.console;
 
-import com.bank.console.components.ConsolePrompt;
-import com.bank.console.components.TUILayout;
+import com.bank.console.components.*;
 import com.bank.console.screens.Screen;
 import com.bank.console.screens.SplashScreen;
 import org.slf4j.Logger;
@@ -58,11 +57,13 @@ public class ConsoleApplication {
     }
 
     private void handleScreenException(Exception e) {
-        session.clearScreen();
-        TUILayout.printHeader("System Error");
-        TUILayout.printScreenTitle("Unexpected Error");
-        TUILayout.printAlert("An error occurred: " + e.getMessage(), true);
-        TUILayout.printFooter("Press Enter to return to previous screen");
+        StringBuilder sb = new StringBuilder();
+        sb.append(TUILayout.header("System Error"));
+        sb.append(TUILayout.screenTitle("Unexpected Error"));
+        sb.append(TUILayout.alert("An error occurred: " + e.getMessage(), true));
+        sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUILayout.footer("Press Enter to return to previous screen"));
+        com.bank.console.components.ScreenRenderer.render(sb.toString(), true);
         ConsolePrompt.pause();
         navigator.pop();
     }

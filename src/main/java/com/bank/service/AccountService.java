@@ -15,11 +15,14 @@ import com.bank.model.entity.User;
 import com.bank.model.repository.AccountRepository;
 import com.bank.model.repository.TransactionRepository;
 import com.bank.util.AccountNumberGenerator;
+import com.bank.util.CurrencyConverter;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,13 +33,22 @@ public class AccountService {
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
     private final FraudDetectionService fraudDetectionService;
+    private final LiveCurrencyService liveCurrencyService;
 
     public AccountService(AccountRepository accountRepository,
                           TransactionRepository transactionRepository,
                           FraudDetectionService fraudDetectionService) {
+        this(accountRepository, transactionRepository, fraudDetectionService, new LiveCurrencyService());
+    }
+
+    public AccountService(AccountRepository accountRepository,
+                          TransactionRepository transactionRepository,
+                          FraudDetectionService fraudDetectionService,
+                          LiveCurrencyService liveCurrencyService) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.fraudDetectionService = fraudDetectionService;
+        this.liveCurrencyService = liveCurrencyService;
     }
 
     public BigDecimal getBalance(Long accountId, User requestingUser) {
@@ -128,28 +140,58 @@ public class AccountService {
             assertOwnership(sender, requestingUser);
             assertActive(sender);
             assertActive(receiver);
-            assertSameCurrency(sender, receiver);
 
-            Currency effectiveCurrency = resolveCurrency(requestCurrency, sender.getCurrency());
+            Currency senderCurrency = sender.getCurrency();
+            Currency receiverCurrency = receiver.getCurrency();
+            Currency effectiveCurrency = resolveCurrency(requestCurrency, senderCurrency);
 
-            if (sender.getBalance().compareTo(amount) < 0) {
-                throw new InsufficientBalanceException(
-                        "Insufficient balance: available " + sender.getBalance() + ", requested " + amount);
+            BigDecimal debitAmount = amount;
+            BigDecimal creditAmount;
+            BigDecimal exchangeRate = BigDecimal.ONE;
+            boolean isCrossCurrency = senderCurrency != receiverCurrency;
+
+            if (!isCrossCurrency) {
+                creditAmount = debitAmount;
+            } else {
+                Map<String, BigDecimal> rates = (liveCurrencyService != null)
+                        ? liveCurrencyService.getRates()
+                        : CurrencyConverter.getFallbackRates();
+                creditAmount = CurrencyConverter.convert(debitAmount, senderCurrency.name(), receiverCurrency.name(), rates);
+                exchangeRate = CurrencyConverter.getExchangeRate(senderCurrency.name(), receiverCurrency.name(), rates);
             }
 
-            sender.setBalance(sender.getBalance().subtract(amount));
-            receiver.setBalance(receiver.getBalance().add(amount));
+            if (sender.getBalance().compareTo(debitAmount) < 0) {
+                throw new InsufficientBalanceException(
+                        "Insufficient balance: available " + sender.getBalance() + ", requested " + debitAmount);
+            }
+
+            sender.setBalance(sender.getBalance().subtract(debitAmount));
+            receiver.setBalance(receiver.getBalance().add(creditAmount));
 
             accountRepository.updateWithConnection(conn, sender);
             accountRepository.updateWithConnection(conn, receiver);
+
+            String effectiveDescription = description;
+            if (isCrossCurrency) {
+                String conversionNote = String.format(" [Exchanged %s %s -> %s %s @ 1 %s = %s %s]",
+                        debitAmount.setScale(2, RoundingMode.HALF_UP).toPlainString(), senderCurrency,
+                        creditAmount.setScale(2, RoundingMode.HALF_UP).toPlainString(), receiverCurrency,
+                        senderCurrency, exchangeRate.setScale(4, RoundingMode.HALF_UP).toPlainString(), receiverCurrency);
+                effectiveDescription = (description != null && !description.isBlank())
+                        ? (description + conversionNote)
+                        : ("Cross-currency transfer" + conversionNote);
+                if (effectiveDescription.length() > 255) {
+                    effectiveDescription = effectiveDescription.substring(0, 255);
+                }
+            }
 
             Transaction transaction = Transaction.builder()
                     .accountId(sender.getAccountId())
                     .relatedAccountId(receiver.getAccountId())
                     .transactionType(TransactionType.TRANSFER)
-                    .amount(amount)
+                    .amount(debitAmount)
                     .currency(effectiveCurrency)
-                    .description(description)
+                    .description(effectiveDescription)
                     .status(TransactionStatus.COMPLETED)
                     .idempotencyKey(idempotencyKey)
                     .build();

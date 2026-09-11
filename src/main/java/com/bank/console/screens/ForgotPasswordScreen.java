@@ -4,6 +4,7 @@ import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
 import com.bank.console.components.ConsolePrompt;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -50,12 +51,6 @@ public class ForgotPasswordScreen implements Screen {
         try {
             while (true) {
                 StringBuilder sb = new StringBuilder();
-                if (firstRender) {
-                    sb.append(ConsoleTheme.CLEAR_SCREEN);
-                } else {
-                    sb.append("\u001B[H");
-                }
-
                 sb.append(TUIBox.top(width)).append("\n");
                 sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > PASSWORD RECOVERY GATEWAY"), width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
@@ -82,8 +77,7 @@ public class ForgotPasswordScreen implements Screen {
                 }
                 sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1-2] Quick Select  •  [Esc] Back")).append("\n");
 
-                System.out.print(sb.toString());
-                System.out.flush();
+                ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
                 int ch = reader.read();
@@ -145,17 +139,18 @@ public class ForgotPasswordScreen implements Screen {
     }
 
     private void handleOtpRecovery(TUISession session) {
-        session.clearScreen();
         int width = TUILayout.APP_WIDTH;
 
-        System.out.println(TUIBox.top(width));
-        System.out.println(TUIBox.line(ConsoleTheme.primary("PASSWORD RECOVERY > OTP CODE VERIFICATION"), width));
-        System.out.println(TUIBox.divider(width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.line("  Step 1 of 3: Enter your registered account email.", width));
-        System.out.println(TUIBox.line("  Email Address     : [                                                ]", width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.bottom(width));
+        StringBuilder sb = new StringBuilder();
+        sb.append(TUIBox.top(width)).append("\n");
+        sb.append(TUIBox.line(ConsoleTheme.primary("PASSWORD RECOVERY > OTP CODE VERIFICATION"), width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.line("  Step 1 of 3: Enter your registered account email.", width)).append("\n");
+        sb.append(TUIBox.line("  Email Address     : [                                                ]", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.bottom(width)).append("\n");
+        ScreenRenderer.render(sb.toString(), true);
 
         String email = ConsolePrompt.promptLine("Registered Email (or '0' to cancel)");
         if (email.isEmpty() || "0".equals(email)) {
@@ -164,18 +159,19 @@ public class ForgotPasswordScreen implements Screen {
 
         try {
             String initMsg = authController.initiatePasswordRecovery(email);
-            session.clearScreen();
 
-            System.out.println(TUIBox.top(width));
-            System.out.println(TUIBox.line(ConsoleTheme.primary("PASSWORD RECOVERY > OTP CODE VERIFICATION"), width));
-            System.out.println(TUIBox.divider(width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.line(ConsoleTheme.info("  " + (initMsg != null ? initMsg : "OTP code dispatched.")), width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.line("  Step 2 of 3: Enter the 6-digit verification code sent to your email.", width));
-            System.out.println(TUIBox.line("  OTP Code          : [ ###### ]", width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.bottom(width));
+            sb = new StringBuilder();
+            sb.append(TUIBox.top(width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.primary("PASSWORD RECOVERY > OTP CODE VERIFICATION"), width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.info("  " + (initMsg != null ? initMsg : "OTP code dispatched.")), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.line("  Step 2 of 3: Enter the 6-digit verification code sent to your email.", width)).append("\n");
+            sb.append(TUIBox.line("  OTP Code          : [ ###### ]", width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
+            ScreenRenderer.render(sb.toString(), true);
 
             String code = ConsolePrompt.promptLine("Enter 6-digit OTP code");
             if (code.isEmpty() || "0".equals(code)) {
@@ -189,15 +185,16 @@ public class ForgotPasswordScreen implements Screen {
                 return;
             }
 
-            session.clearScreen();
-            System.out.println(TUIBox.top(width));
-            System.out.println(TUIBox.line(ConsoleTheme.primary("PASSWORD RECOVERY > CREATE NEW PASSWORD"), width));
-            System.out.println(TUIBox.divider(width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.line("  Step 3 of 3: Set your new secure password.", width));
-            System.out.println(TUIBox.line(ConsoleTheme.muted("  Minimum 8 characters with upper, lower, digit, and symbol."), width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.bottom(width));
+            sb = new StringBuilder();
+            sb.append(TUIBox.top(width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.primary("PASSWORD RECOVERY > CREATE NEW PASSWORD"), width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.line("  Step 3 of 3: Set your new secure password.", width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.muted("  Minimum 8 characters with upper, lower, digit, and symbol."), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
+            ScreenRenderer.render(sb.toString(), true);
 
             String newPass = ConsolePrompt.promptPasswordRaw("New Password");
             if (newPass.isEmpty()) {
@@ -215,15 +212,16 @@ public class ForgotPasswordScreen implements Screen {
 
             authController.resetPassword(email, code, newPass);
 
-            session.clearScreen();
-            System.out.println(TUIBox.top(width));
-            System.out.println(TUIBox.line(ConsoleTheme.success("PASSWORD RECOVERY COMPLETED SUCCESSFULLY"), width));
-            System.out.println(TUIBox.divider(width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.center("Your password has been securely updated.", width));
-            System.out.println(TUIBox.center(ConsoleTheme.muted("You may now sign in with your new credentials."), width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.bottom(width));
+            sb = new StringBuilder();
+            sb.append(TUIBox.top(width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.success("PASSWORD RECOVERY COMPLETED SUCCESSFULLY"), width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.center("Your password has been securely updated.", width)).append("\n");
+            sb.append(TUIBox.center(ConsoleTheme.muted("You may now sign in with your new credentials."), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
+            ScreenRenderer.render(sb.toString(), true);
             ConsolePrompt.pause();
 
             this.statusMessage = "Password updated successfully. Please sign in.";
@@ -237,16 +235,17 @@ public class ForgotPasswordScreen implements Screen {
     }
 
     private void handleSecurityQuestionRecovery(TUISession session) {
-        session.clearScreen();
         int width = TUILayout.APP_WIDTH;
 
-        System.out.println(TUIBox.top(width));
-        System.out.println(TUIBox.line(ConsoleTheme.primary("STAFF / ADMIN SECURITY QUESTION RECOVERY"), width));
-        System.out.println(TUIBox.divider(width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.line("  Staff Username    : [                                                ]", width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.bottom(width));
+        StringBuilder sb = new StringBuilder();
+        sb.append(TUIBox.top(width)).append("\n");
+        sb.append(TUIBox.line(ConsoleTheme.primary("STAFF / ADMIN SECURITY QUESTION RECOVERY"), width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.line("  Staff Username    : [                                                ]", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.bottom(width)).append("\n");
+        ScreenRenderer.render(sb.toString(), true);
 
         String username = ConsolePrompt.promptLine("Staff Username (or '0' to cancel)");
         if (username.isEmpty() || "0".equals(username)) {
@@ -261,15 +260,16 @@ public class ForgotPasswordScreen implements Screen {
                 return;
             }
 
-            session.clearScreen();
-            System.out.println(TUIBox.top(width));
-            System.out.println(TUIBox.line(ConsoleTheme.primary("STAFF / ADMIN SECURITY QUESTION RECOVERY"), width));
-            System.out.println(TUIBox.divider(width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.line("  Security Question : " + ConsoleTheme.info(question), width));
-            System.out.println(TUIBox.line("  Security Answer   : [                                                ]", width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.bottom(width));
+            sb = new StringBuilder();
+            sb.append(TUIBox.top(width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.primary("STAFF / ADMIN SECURITY QUESTION RECOVERY"), width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.line("  Security Question : " + ConsoleTheme.info(question), width)).append("\n");
+            sb.append(TUIBox.line("  Security Answer   : [                                                ]", width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
+            ScreenRenderer.render(sb.toString(), true);
 
             String answer = ConsolePrompt.promptLine("Security Answer");
             if (answer.isEmpty()) {
@@ -287,14 +287,15 @@ public class ForgotPasswordScreen implements Screen {
 
             authController.recoverAdminPassword(username, answer, newPass);
 
-            session.clearScreen();
-            System.out.println(TUIBox.top(width));
-            System.out.println(TUIBox.line(ConsoleTheme.success("STAFF PASSWORD RESET SUCCESSFUL"), width));
-            System.out.println(TUIBox.divider(width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.center("Staff credentials updated successfully.", width));
-            System.out.println(TUIBox.emptyLine(width));
-            System.out.println(TUIBox.bottom(width));
+            sb = new StringBuilder();
+            sb.append(TUIBox.top(width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.success("STAFF PASSWORD RESET SUCCESSFUL"), width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.center("Staff credentials updated successfully.", width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
+            ScreenRenderer.render(sb.toString(), true);
             ConsolePrompt.pause();
 
             this.statusMessage = "Staff password updated. Please sign in.";

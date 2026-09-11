@@ -42,12 +42,10 @@ public class AdminMainMenuScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
-        TUILayout.printHeader(session.getAuthenticatedName());
-        TUILayout.printScreenTitle("Administrative Portal — " + admin.getRole());
-
         AdminRole role = admin.getRole();
-        ConsoleMenu menu = new ConsoleMenu();
+        ConsoleMenu menu = new ConsoleMenu()
+                .setHeaderSubtitle(session.getAuthenticatedName())
+                .setScreenTitle("Administrative Portal — " + admin.getRole());
 
         if (role == AdminRole.LOAN_OFFICER) {
             menu.addItem("01", "Dashboard", "System-wide metrics and overview")

@@ -54,10 +54,10 @@ public class InsightsScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
+        StringBuilder sb = new StringBuilder();
         String currentMonthStr = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy")).toUpperCase();
-        TUILayout.printHeader(userDto.getFullName());
-        TUILayout.printScreenTitle("Financial Insights — " + currentMonthStr);
+        sb.append(TUILayout.header(userDto.getFullName()));
+        sb.append(TUILayout.screenTitle("Financial Insights — " + currentMonthStr));
 
         try {
             FinancialInsights insights = financialController.getInsights(userEntity);
@@ -69,33 +69,33 @@ public class InsightsScreen implements Screen {
             BigDecimal rate = insights != null && insights.getSavingsRate() != null ? insights.getSavingsRate() : BigDecimal.ZERO;
 
             // 1. Overall Balance & Cashflow Card
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "CURRENT TOTAL BALANCE" + ConsoleTheme.RESET +
                             "                 " +
                             ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "MONTHLY CASH FLOW" + ConsoleTheme.RESET,
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     ConsoleTheme.BOLD + ConsoleTheme.BRAND_GOLD + String.format("%-33s", ConsoleFormatter.formatCurrency(balance)) + ConsoleTheme.RESET +
                             "Monthly Income:    " + ConsoleTheme.success(String.format("%12s", ConsoleFormatter.formatCurrency(income))),
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     "                                 " +
                             "Monthly Expenses:  " + ConsoleTheme.error(String.format("%12s", ConsoleFormatter.formatCurrency(expenses))),
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     "                                 " +
                             "Net Savings:       " + ConsoleTheme.highlight(String.format("%12s", ConsoleFormatter.formatCurrency(savings))),
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-            System.out.println(TUIBox.divider(TUILayout.APP_WIDTH));
+            sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+            sb.append(TUIBox.divider(TUILayout.APP_WIDTH)).append("\n");
 
             // 2. Savings Rate & Top Expense Category
             String topCat = (insights != null && insights.getHighestSpendingCategory().isPresent())
@@ -105,30 +105,30 @@ public class InsightsScreen implements Screen {
                     ? ConsoleFormatter.formatCurrency(insights.getHighestSpendingAmount().get())
                     : "$0.00";
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "SAVINGS METRICS" + ConsoleTheme.RESET +
                             "                       " +
                             ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "TOP SPENDING CATEGORY" + ConsoleTheme.RESET,
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
             String rateStr = String.format("%.1f%%", rate.doubleValue());
             String rateDisplay = rate.compareTo(BigDecimal.valueOf(20)) >= 0
                     ? ConsoleTheme.success(rateStr)
                     : (rate.compareTo(BigDecimal.ZERO) >= 0 ? ConsoleTheme.warning(rateStr) : ConsoleTheme.error(rateStr));
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     "Savings Rate:       " + rateDisplay +
                             "              " + ConsoleTheme.highlight(topCat) + " (" + ConsoleTheme.warning(topAmt) + ")",
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-            System.out.println(TUIBox.divider(TUILayout.APP_WIDTH));
+            sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+            sb.append(TUIBox.divider(TUILayout.APP_WIDTH)).append("\n");
 
             // 3. Category Budgets Health Check
-            System.out.println(TUIBox.line(ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "ACTIVE BUDGET HEALTH CHECK" + ConsoleTheme.RESET, TUILayout.APP_WIDTH));
-            System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
+            sb.append(TUIBox.line(ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "ACTIVE BUDGET HEALTH CHECK" + ConsoleTheme.RESET, TUILayout.APP_WIDTH)).append("\n");
+            sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
 
             Map<Long, String> categoryNames = new HashMap<>();
             try {
@@ -149,18 +149,19 @@ public class InsightsScreen implements Screen {
                             name, bar, statColor,
                             ConsoleFormatter.formatCurrency(bv.getActualSpending()),
                             ConsoleFormatter.formatCurrency(b.getAmountLimit()));
-                    System.out.println(TUIBox.line(row, TUILayout.APP_WIDTH));
+                    sb.append(TUIBox.line(row, TUILayout.APP_WIDTH)).append("\n");
                 }
             } else {
-                System.out.println(TUIBox.center(ConsoleTheme.muted("No active budgets found for health comparison."), TUILayout.APP_WIDTH));
+                sb.append(TUIBox.center(ConsoleTheme.muted("No active budgets found for health comparison."), TUILayout.APP_WIDTH)).append("\n");
             }
 
         } catch (Exception e) {
-            TUILayout.printAlert("Failed to compute financial insights: " + e.getMessage(), true);
+            sb.append(TUILayout.alert("Failed to compute financial insights: " + e.getMessage(), true));
         }
 
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-        TUILayout.printFooter("Press Enter to return to Main Menu");
+        sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUILayout.footer("Press Enter to return to Main Menu"));
+        ScreenRenderer.render(sb.toString(), true);
         ConsolePrompt.pause();
         navigator.pop();
     }

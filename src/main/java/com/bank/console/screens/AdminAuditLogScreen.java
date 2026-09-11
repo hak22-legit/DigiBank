@@ -39,15 +39,15 @@ public class AdminAuditLogScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
-        TUILayout.printHeader("Compliance Audit");
-        TUILayout.printScreenTitle("System Audit Logs — Page " + currentPage);
+        ConsoleMenu menu = new ConsoleMenu()
+                .setHeaderSubtitle("Compliance Audit")
+                .setScreenTitle("System Audit Logs — Page " + currentPage);
 
         PagedResult<AuditLog> result = null;
         try {
             result = adminController.getAuditLogs(adminEntity, currentPage, pageSize);
         } catch (Exception e) {
-            TUILayout.printAlert("Failed to load audit logs: " + e.getMessage(), true);
+            menu.setAlert("Failed to load audit logs: " + e.getMessage(), true);
         }
 
         ConsoleTable table = new ConsoleTable()
@@ -71,14 +71,11 @@ public class AdminAuditLogScreen implements Screen {
 
                 table.addRow(time, adm, action, target, details);
             }
-            table.print();
+            menu.setCustomContent(table.render());
         } else {
-            System.out.println(TUIBox.center(ConsoleTheme.muted("No audit logs found on this page."), TUILayout.APP_WIDTH));
+            menu.setCustomContent(TUIBox.center(ConsoleTheme.muted("No audit logs found on this page."), TUILayout.APP_WIDTH) + "\n");
         }
 
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-
-        ConsoleMenu menu = new ConsoleMenu();
         if (result != null && result.hasNextPage()) {
             menu.addItem("01", "Next Page", "View page " + (currentPage + 1));
         }

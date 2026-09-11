@@ -118,6 +118,7 @@ class ControllerFactoryTest {
         assertNotNull(ControllerFactory.getAuditLogService());
         assertNotNull(ControllerFactory.getFraudInvestigationService());
         assertNotNull(ControllerFactory.getStatementReportService());
+        assertNotNull(ControllerFactory.getLiveCurrencyService());
         assertNotNull(ControllerFactory.getUserRepository());
         assertNotNull(ControllerFactory.getAccountRepository());
         assertNotNull(ControllerFactory.getLoanRepository());

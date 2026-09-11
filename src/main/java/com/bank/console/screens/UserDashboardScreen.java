@@ -47,10 +47,10 @@ public class UserDashboardScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
+        StringBuilder sb = new StringBuilder();
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy")).toUpperCase();
-        TUILayout.printHeader(userDto.getFullName());
-        TUILayout.printScreenTitle("Financial Dashboard — " + dateStr);
+        sb.append(TUILayout.header(userDto.getFullName()));
+        sb.append(TUILayout.screenTitle("Financial Dashboard — " + dateStr));
 
         try {
             // Retrieve aggregated dashboard view model using User entity from SessionManager
@@ -78,35 +78,35 @@ public class UserDashboardScreen implements Screen {
                     : monthlyIncome.subtract(monthlyExpenses);
 
             // Summary Card Layout
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "TOTAL BALANCE" + ConsoleTheme.RESET +
                             "                        " +
                             ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "MONTHLY SUMMARY" + ConsoleTheme.RESET,
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     ConsoleTheme.BOLD + ConsoleTheme.BRAND_GOLD + String.format("%-32s", ConsoleFormatter.formatCurrency(totalBalance)) + ConsoleTheme.RESET +
                             "Income     " + ConsoleTheme.success(String.format("%14s", ConsoleFormatter.formatCurrency(monthlyIncome))),
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     ConsoleTheme.muted(String.format("%-32s", accountCount + " Active Account(s)")) +
                             "Expenses   " + ConsoleTheme.error(String.format("%14s", ConsoleFormatter.formatCurrency(monthlyExpenses))),
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.line(
+            sb.append(TUIBox.line(
                     "                                " +
                             "Net Savings" + ConsoleTheme.highlight(String.format("%14s", ConsoleFormatter.formatCurrency(monthlySavings))),
                     TUILayout.APP_WIDTH
-            ));
+            )).append("\n");
 
-            System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-            System.out.println(TUIBox.divider(TUILayout.APP_WIDTH));
-            System.out.println(TUIBox.line(ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "RECENT TRANSACTIONS" + ConsoleTheme.RESET, TUILayout.APP_WIDTH));
-            System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
+            sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+            sb.append(TUIBox.divider(TUILayout.APP_WIDTH)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.BOLD + ConsoleTheme.FG_BRIGHT_WHITE + "RECENT TRANSACTIONS" + ConsoleTheme.RESET, TUILayout.APP_WIDTH)).append("\n");
+            sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
 
             // Transactions Table
             ConsoleTable table = new ConsoleTable()
@@ -141,16 +141,18 @@ public class UserDashboardScreen implements Screen {
 
                     table.addRow(date, type, amount, status);
                 }
-                table.print();
+                sb.append(table.render());
             } else {
-                System.out.println(TUIBox.center(ConsoleTheme.muted("No recent transactions found for this account."), TUILayout.APP_WIDTH));
+                sb.append(TUIBox.center(ConsoleTheme.muted("No recent transactions found for this account."), TUILayout.APP_WIDTH)).append("\n");
             }
 
         } catch (Exception e) {
-            TUILayout.printAlert("Unable to load dashboard data: " + e.getMessage(), true);
+            sb.append(TUILayout.alert("Unable to load dashboard data: " + e.getMessage(), true));
         }
 
-        TUILayout.printFooter("Press Enter to return to Main Menu");
+        sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUILayout.footer("Press Enter to return to Main Menu"));
+        ScreenRenderer.render(sb.toString(), true);
         ConsolePrompt.pause();
         navigator.pop(); // Returns back to UserMainMenuScreen
     }

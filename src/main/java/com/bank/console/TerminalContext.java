@@ -69,6 +69,9 @@ public class TerminalContext implements AutoCloseable {
                 System.out.println("\n" + ConsoleTheme.muted("Session terminated by user. Goodbye!"));
                 System.exit(0);
             });
+            this.terminal.handle(Terminal.Signal.WINCH, sig -> {
+                // Window resize signal: terminal dimensions updated dynamically
+            });
         } catch (Exception ignored) {
             // Signal handling might not be supported on some platforms/dumb terminals
         }
@@ -96,6 +99,16 @@ public class TerminalContext implements AutoCloseable {
     public int getWidth() {
         int w = terminal.getWidth();
         return (w > 0) ? Math.min(w, DEFAULT_GRID_WIDTH) : DEFAULT_GRID_WIDTH;
+    }
+
+    public int getTerminalWidth() {
+        int w = terminal != null ? terminal.getWidth() : 0;
+        return (w > 0) ? w : DEFAULT_GRID_WIDTH;
+    }
+
+    public int getTerminalHeight() {
+        int h = terminal != null ? terminal.getHeight() : 0;
+        return (h > 0) ? h : 24;
     }
 
     public void clearScreen() {

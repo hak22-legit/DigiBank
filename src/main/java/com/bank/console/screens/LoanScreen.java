@@ -5,6 +5,7 @@ import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
 import com.bank.console.components.ConsoleFormatter;
 import com.bank.console.components.ConsolePrompt;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -108,11 +109,6 @@ public class LoanScreen implements Screen {
                 }
 
                 StringBuilder sb = new StringBuilder();
-                if (firstRender) {
-                    sb.append(ConsoleTheme.CLEAR_SCREEN);
-                } else {
-                    sb.append("\u001B[H"); // Cursor Home
-                }
 
                 // Render Screen 8 Box
                 sb.append(TUIBox.top(width)).append("\n");
@@ -200,8 +196,7 @@ public class LoanScreen implements Screen {
                 }
                 sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1-3] Quick Select  •  [Esc] Back")).append("\n");
 
-                System.out.print(sb.toString());
-                System.out.flush();
+                ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
                 // Read non-blocking raw key

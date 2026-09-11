@@ -33,6 +33,7 @@ public class ConsoleMenu {
     private String screenTitle = "Navigation Menu";
     private String statusAlert = null;
     private boolean isErrorAlert = false;
+    private String customContent = null;
 
     public ConsoleMenu setHeaderSubtitle(String subtitle) {
         this.headerSubtitle = subtitle;
@@ -47,6 +48,11 @@ public class ConsoleMenu {
     public ConsoleMenu setAlert(String alert, boolean isError) {
         this.statusAlert = alert;
         this.isErrorAlert = isError;
+        return this;
+    }
+
+    public ConsoleMenu setCustomContent(String customContent) {
+        this.customContent = customContent;
         return this;
     }
 
@@ -88,11 +94,13 @@ public class ConsoleMenu {
                     }
                 } else if (ch == '\r' || ch == '\n') { // Enter key
                     return items.get(selectedIndex);
-                } else if (ch >= '1' && ch <= '9') { // Number shortcut
+                } else if (ch >= '1' && ch <= '9') { // Instant number hotkey
                     int num = ch - '1';
                     if (num < items.size()) {
                         return items.get(num);
                     }
+                } else if (ch == 'b' || ch == 'B') { // 'B' key for Back
+                    return null;
                 } else if (ch == 3) { // Ctrl+C
                     System.exit(0);
                 }
@@ -106,16 +114,19 @@ public class ConsoleMenu {
 
     private void renderMenu(boolean firstRender) {
         StringBuilder sb = new StringBuilder();
-        if (firstRender) {
-            sb.append(ConsoleTheme.CLEAR_SCREEN);
-        } else {
-            sb.append("\u001B[H"); // Cursor Home without wiping screen
-        }
         sb.append(TUILayout.header(headerSubtitle));
         sb.append(TUILayout.screenTitle(screenTitle));
 
         if (statusAlert != null) {
             sb.append(TUILayout.alert(statusAlert, isErrorAlert));
+            sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+        }
+
+        if (customContent != null && !customContent.isEmpty()) {
+            sb.append(customContent);
+            if (!customContent.endsWith("\n")) {
+                sb.append("\n");
+            }
             sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
         }
 
@@ -127,10 +138,11 @@ public class ConsoleMenu {
         }
 
         sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
-        sb.append(TUILayout.footer("↑/↓ Move   Enter Select   Esc Back   Ctrl+C Quit")).append("\n");
+        sb.append(TUIBox.bottom(TUILayout.APP_WIDTH)).append("\n");
+        String hotkeyRange = items.size() > 1 ? ("1-" + Math.min(items.size(), 9)) : "1";
+        sb.append(ConsoleTheme.muted(String.format(" [↑/↓] Navigate  •  [Enter] Select  •  [%s] Hotkey  •  [Esc] Back", hotkeyRange))).append("\n");
 
-        System.out.print(sb.toString());
-        System.out.flush();
+        ScreenRenderer.render(sb.toString(), firstRender);
     }
 
     private String padRight(String s, int n) {

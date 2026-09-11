@@ -3,11 +3,12 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
-import com.bank.console.components.ConsoleFormatter;
-import com.bank.console.components.TUIBox;
-import com.bank.console.components.TUILayout;
+import com.bank.console.components.*;
+import com.bank.console.components.TUIFormHelper.KeyAction;
+import com.bank.console.components.TUIFormHelper.KeyEvent;
 import com.bank.console.theme.ConsoleTheme;
 import com.bank.controller.AccountController;
+import com.bank.controller.ReportController;
 import com.bank.controller.TransactionController;
 import com.bank.model.TransactionView;
 import com.bank.model.dto.AccountDTO;
@@ -17,7 +18,7 @@ import com.bank.model.entity.Transaction;
 import com.bank.model.entity.User;
 import com.bank.model.enums.HistoryFilter;
 import com.bank.model.enums.TransactionDirection;
-import com.bank.model.enums.TransactionStatus;
+import com.bank.model.enums.TransactionType;
 import com.bank.security.SessionManager;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
@@ -25,34 +26,53 @@ import org.jline.utils.NonBlockingReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.math.BigDecimal;
+import java.text.DecimalFormat;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * SCREEN 7: TRANSACTION LEDGER & HISTORY (82 Columns)
- * Non-blocking raw single-key interception (N/P/F/B/Esc), in-place filter cycling, and zero dual-prompts.
+ * Clean footers, running balance tracking, 82-column layout, and PDF export shortcut.
  */
 public class TransactionHistoryScreen implements Screen {
     private static final Logger logger = LoggerFactory.getLogger(TransactionHistoryScreen.class);
 
     private final TransactionController transactionController;
     private final AccountController accountController;
+    private final ReportController reportController;
+
+    public enum LedgerFilter {
+        ALL("ALL TRANSACTIONS"),
+        DEPOSIT("DEPOSITS ONLY"),
+        WITHDRAW("WITHDRAWALS ONLY"),
+        TRANSFER("TRANSFERS ONLY"),
+        LOAN("LOAN OPERATIONS");
+
+        private final String label;
+        LedgerFilter(String label) { this.label = label; }
+        public String getLabel() { return label; }
+    }
 
     public TransactionHistoryScreen() {
-        this(ControllerFactory.getTransactionController(), ControllerFactory.getAccountController());
+        this(ControllerFactory.getTransactionController(),
+             ControllerFactory.getAccountController(),
+             ControllerFactory.getReportController());
     }
 
     public TransactionHistoryScreen(TransactionController transactionController) {
-        this(transactionController, ControllerFactory.getAccountController());
+        this(transactionController, ControllerFactory.getAccountController(), ControllerFactory.getReportController());
     }
 
     public TransactionHistoryScreen(TransactionController transactionController, AccountController accountController) {
+        this(transactionController, accountController, ControllerFactory.getReportController());
+    }
+
+    public TransactionHistoryScreen(TransactionController transactionController, AccountController accountController, ReportController reportController) {
         this.transactionController = transactionController;
         this.accountController = accountController;
+        this.reportController = reportController;
     }
 
     @Override
@@ -71,13 +91,15 @@ public class TransactionHistoryScreen implements Screen {
         try {
             accounts = accountController.getAccountsForUser(userEntity);
         } catch (Exception e) {
-            System.out.println(" Failed to load accounts: " + e.getMessage());
+            TUILayout.printAlert("Failed to load accounts: " + e.getMessage(), true);
+            ConsolePrompt.pause();
             navigator.pop();
             return;
         }
 
         if (accounts == null || accounts.isEmpty()) {
-            System.out.println(" No accounts found to view transaction history.");
+            TUILayout.printAlert("No accounts found to view transaction history.", true);
+            ConsolePrompt.pause();
             navigator.pop();
             return;
         }
@@ -93,10 +115,11 @@ public class TransactionHistoryScreen implements Screen {
             }
         } catch (Exception ignored) {}
 
-        HistoryFilter filter = HistoryFilter.ALL;
+        LedgerFilter filter = LedgerFilter.ALL;
         int currentPage = 1;
         int pageSize = 5;
 
+        DecimalFormat df = new DecimalFormat("#,##0.00");
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
         Terminal terminal = session.getTerminal();
@@ -107,12 +130,39 @@ public class TransactionHistoryScreen implements Screen {
 
         try {
             while (true) {
-                List<TransactionView> txViews = null;
+                // Fetch all transactions to compute running balances backward from current balance
+                List<TransactionView> allViews = null;
                 try {
-                    txViews = transactionController.getTransactionHistory(selectedAcc.getAccountId(), filter, userEntity);
+                    allViews = transactionController.getTransactionHistory(selectedAcc.getAccountId(), HistoryFilter.ALL, userEntity);
                 } catch (Exception ignored) {}
 
-                int totalRecords = txViews != null ? txViews.size() : 0;
+                if (allViews == null) allViews = Collections.emptyList();
+
+                // Compute running balance for every transaction
+                Map<Long, BigDecimal> runningBalanceMap = new HashMap<>();
+                BigDecimal running = selectedAcc.getBalance();
+                for (TransactionView tv : allViews) {
+                    Transaction t = tv.getTransaction();
+                    if (t != null && t.getTransactionId() != null) {
+                        runningBalanceMap.put(t.getTransactionId(), running);
+                        BigDecimal amt = t.getAmount() != null ? t.getAmount() : BigDecimal.ZERO;
+                        if (tv.getDirection() == TransactionDirection.INCOME) {
+                            running = running.subtract(amt);
+                        } else {
+                            running = running.add(amt);
+                        }
+                    }
+                }
+
+                // Filter transactions according to active LedgerFilter
+                List<TransactionView> filteredViews = new ArrayList<>();
+                for (TransactionView tv : allViews) {
+                    if (matchesFilter(tv, filter)) {
+                        filteredViews.add(tv);
+                    }
+                }
+
+                int totalRecords = filteredViews.size();
                 int totalPages = Math.max(1, (int) Math.ceil((double) totalRecords / pageSize));
                 if (currentPage > totalPages) currentPage = totalPages;
                 if (currentPage < 1) currentPage = 1;
@@ -120,22 +170,20 @@ public class TransactionHistoryScreen implements Screen {
                 int startIdx = (currentPage - 1) * pageSize;
                 int endIdx = Math.min(startIdx + pageSize, totalRecords);
 
-                // Build Screen Frame
+                // Build Screen Frame (Strict 82 columns)
                 StringBuilder sb = new StringBuilder();
-                if (firstRender) {
-                    sb.append(ConsoleTheme.CLEAR_SCREEN);
-                } else {
-                    sb.append("\u001B[H"); // Cursor Home
-                }
-
                 String headerTitle = String.format("DIGIBANK CORE > TRANSACTIONS LEDGER (%s - %s)",
                         selectedAcc.getAccountNumber(), selectedAcc.getCurrency());
 
                 sb.append(TUIBox.top(width)).append("\n");
                 sb.append(TUIBox.line(ConsoleTheme.primary(headerTitle), width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
-                sb.append(TUIBox.line("DATE & TIME        TYPE         CATEGORY       DESCRIPTION     AMOUNT    STAT", width)).append("\n");
-                sb.append(TUIBox.line("─────────────────  ───────────  ─────────────  ──────────────  ────────  ────", width)).append("\n");
+
+                // Table Header: EXACT 77 CHARS
+                String tableHeader = String.format("%-16s  %-10s  %-21s  %11s  %11s",
+                        "DATE & TIME", "TYPE", "DESCRIPTION", "AMOUNT", "BALANCE");
+                sb.append(TUIBox.line(tableHeader, width)).append("\n");
+                sb.append(TUIBox.line(ConsoleTheme.border("─".repeat(77)), width)).append("\n");
 
                 if (totalRecords == 0) {
                     sb.append(TUIBox.line(ConsoleTheme.muted("  No transactions found for this account/filter."), width)).append("\n");
@@ -144,37 +192,29 @@ public class TransactionHistoryScreen implements Screen {
                     }
                 } else {
                     for (int i = startIdx; i < endIdx; i++) {
-                        TransactionView tv = txViews.get(i);
+                        TransactionView tv = filteredViews.get(i);
                         Transaction tx = tv.getTransaction();
 
-                        String dateStr = tx.getTransactionDate() != null ? tx.getTransactionDate().format(dtf) : "2026-09-08 12:00";
-                        String typeStr = tx.getTransactionType() != null ? tx.getTransactionType().name() : "TRANSFER";
-                        if (typeStr.length() > 11) typeStr = typeStr.substring(0, 11);
+                        String dateStr = tx.getTransactionDate() != null
+                                ? tx.getTransactionDate().format(dtf)
+                                : "2026-09-11 00:00";
 
-                        String catName = "Other";
-                        if (tx.getCategoryId() != null && categoryNames.containsKey(tx.getCategoryId())) {
-                            catName = categoryNames.get(tx.getCategoryId());
-                        } else if (tx.getDescription() != null) {
-                            String dLower = tx.getDescription().toLowerCase();
-                            if (dLower.contains("bill") || dLower.contains("water") || dLower.contains("electric")) catName = "Bills";
-                            else if (dLower.contains("food") || dLower.contains("market")) catName = "Food";
-                            else if (dLower.contains("movie") || dLower.contains("entertain")) catName = "Entertainment";
-                        }
-                        if (catName.length() > 13) catName = catName.substring(0, 13);
+                        String typeStr = formatTransactionType(tx.getTransactionType());
+                        if (typeStr.length() > 10) typeStr = typeStr.substring(0, 10);
 
                         String desc = tx.getDescription() != null ? tx.getDescription() : "-";
-                        if (desc.length() > 14) desc = desc.substring(0, 14);
+                        if (desc.length() > 21) desc = desc.substring(0, 21);
 
                         BigDecimal amt = tx.getAmount() != null ? tx.getAmount() : BigDecimal.ZERO;
                         boolean isIncome = tv.getDirection() == TransactionDirection.INCOME;
                         String sign = isIncome ? "+" : "-";
-                        String amountFormatted = String.format("%s$%s", sign, ConsoleFormatter.formatCurrency(amt).replace("$", "").trim());
-                        if (amountFormatted.length() > 9) amountFormatted = amountFormatted.substring(0, 9);
+                        String amountFormatted = String.format("%s$%9s", sign, df.format(amt));
 
-                        String statStr = (tx.getStatus() == TransactionStatus.COMPLETED) ? "COMP" : "PEND";
+                        BigDecimal rowBal = runningBalanceMap.getOrDefault(tx.getTransactionId(), selectedAcc.getBalance());
+                        String balanceFormatted = String.format("$%10s", df.format(rowBal));
 
-                        String row = String.format("%-17s  %-11s  %-13s  %-14s  %9s  %-4s",
-                                dateStr, typeStr, catName, desc, amountFormatted, statStr);
+                        String row = String.format("%-16s  %-10s  %-21s  %11s  %11s",
+                                dateStr, typeStr, desc, amountFormatted, balanceFormatted);
                         sb.append(TUIBox.line(row, width)).append("\n");
                     }
 
@@ -185,62 +225,184 @@ public class TransactionHistoryScreen implements Screen {
                 }
 
                 sb.append(TUIBox.divider(width)).append("\n");
-                String filterBadge = ConsoleTheme.highlight("[" + filter.name() + "]");
-                sb.append(TUIBox.line(String.format("Ledger: Page %d of %d | Filter: %s", currentPage, totalPages, filterBadge), width)).append("\n");
-                sb.append(TUIBox.emptyLine(width)).append("\n");
-                sb.append(TUIBox.line(" [N] Next Page   [P] Previous Page   [F] Cycle Filter   [B/Esc] Back", width)).append("\n");
-                sb.append(TUIBox.bottom(width)).append("\n");
-                sb.append(ConsoleTheme.muted("  [N] Next Page  •  [P] Prev Page  •  [F] Cycle Filter  •  [Esc] Back")).append("\n");
 
-                System.out.print(sb.toString());
-                System.out.flush();
+                // Clean Summary compartment inside box
+                String pageIndicator = String.format("Page: [ %d / %d ]", currentPage, totalPages);
+                String filterIndicator = String.format("Filter: [%s]", filter.getLabel());
+                String totalIndicator = String.format("Total Records: %d", totalRecords);
+                String summaryRow = String.format("%-19s│ %-28s│ %s", pageIndicator, filterIndicator, totalIndicator);
+                sb.append(TUIBox.line(summaryRow, width)).append("\n");
+
+                sb.append(TUIBox.bottom(width)).append("\n");
+
+                // Navigation hints CLEANLY BELOW the bottom border
+                sb.append(" ").append(ConsoleTheme.muted("[←/→] Page  •  [F] Filter  •  [E] Export PDF  •  [Enter] View Details  •  [Esc] Back")).append("\n");
+
+                ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
-                // Non-blocking single key interception
-                int ch = reader.read();
-
-                if (ch == 27) { // ESC or Escape Sequence
-                    int next = reader.read(60);
-                    if (next == -2 || next == -1) {
-                        // Bare ESC -> Exit
-                        terminal.setAttributes(origAttributes);
-                        navigator.pop();
-                        return;
-                    }
-                    if (next == '[' || next == 'O') {
-                        int code = reader.read();
-                        if (code == 'C' || code == 'B') { // Right or Down -> Next page
-                            if (currentPage < totalPages) currentPage++;
-                        } else if (code == 'D' || code == 'A') { // Left or Up -> Prev page
-                            if (currentPage > 1) currentPage--;
-                        }
-                    }
-                } else if (ch == 'n' || ch == 'N') { // Next Page
+                KeyEvent event = TUIFormHelper.readKey(reader);
+                if (event.action() == KeyAction.ESCAPE || event.ch() == 'b' || event.ch() == 'B') {
+                    terminal.setAttributes(origAttributes);
+                    navigator.pop();
+                    return;
+                } else if (event.action() == KeyAction.RIGHT || event.ch() == 'n' || event.ch() == 'N') {
                     if (currentPage < totalPages) currentPage++;
-                } else if (ch == 'p' || ch == 'P') { // Previous Page
+                } else if (event.action() == KeyAction.LEFT || event.ch() == 'p' || event.ch() == 'P') {
                     if (currentPage > 1) currentPage--;
-                } else if (ch == 'f' || ch == 'F') { // Cycle Filter
+                } else if (event.ch() == 'f' || event.ch() == 'F') {
                     filter = switch (filter) {
-                        case ALL -> HistoryFilter.INCOME;
-                        case INCOME -> HistoryFilter.OUTCOME;
-                        case OUTCOME -> HistoryFilter.ALL;
+                        case ALL -> LedgerFilter.DEPOSIT;
+                        case DEPOSIT -> LedgerFilter.WITHDRAW;
+                        case WITHDRAW -> LedgerFilter.TRANSFER;
+                        case TRANSFER -> LedgerFilter.LOAN;
+                        case LOAN -> LedgerFilter.ALL;
                     };
                     currentPage = 1;
-                } else if (ch == 'b' || ch == 'B' || ch == '0' || ch == '\r' || ch == '\n') { // Back
-                    if (ch == 'b' || ch == 'B' || ch == '0') {
-                        terminal.setAttributes(origAttributes);
-                        navigator.pop();
-                        return;
+                } else if (event.ch() == 'e' || event.ch() == 'E') {
+                    // Export PDF Statement
+                    handleExportPdf(terminal, origAttributes, reader, selectedAcc, userEntity, width);
+                    firstRender = true;
+                } else if (event.action() == KeyAction.ENTER) {
+                    if (totalRecords > 0) {
+                        TransactionView selectedView = filteredViews.get(startIdx);
+                        handleViewDetails(terminal, origAttributes, reader, selectedView, selectedAcc, runningBalanceMap, categoryNames, width);
+                        firstRender = true;
                     }
-                } else if (ch == 3) { // Ctrl+C
-                    session.clearScreen();
-                    System.exit(0);
                 }
             }
-        } catch (IOException e) {
-            logger.error("Error reading key on transaction history screen", e);
+        } catch (Exception e) {
+            logger.error("Error on transaction history screen", e);
         } finally {
             terminal.setAttributes(origAttributes);
         }
+    }
+
+    private boolean matchesFilter(TransactionView tv, LedgerFilter filter) {
+        if (filter == LedgerFilter.ALL) return true;
+        Transaction t = tv.getTransaction();
+        if (t == null || t.getTransactionType() == null) return false;
+        return switch (filter) {
+            case ALL -> true;
+            case DEPOSIT -> t.getTransactionType() == TransactionType.DEPOSIT;
+            case WITHDRAW -> t.getTransactionType() == TransactionType.WITHDRAWAL;
+            case TRANSFER -> t.getTransactionType() == TransactionType.TRANSFER;
+            case LOAN -> t.getTransactionType() == TransactionType.LOAN_DISBURSEMENT
+                    || t.getTransactionType() == TransactionType.LOAN_REPAYMENT;
+            default -> true;
+        };
+    }
+
+    private String formatTransactionType(TransactionType type) {
+        if (type == null) return "TRANSFER";
+        return switch (type) {
+            case DEPOSIT -> "DEPOSIT";
+            case WITHDRAWAL -> "WITHDRAWAL";
+            case TRANSFER -> "TRANSFER";
+            case LOAN_REPAYMENT -> "REPAYMENT";
+            case LOAN_DISBURSEMENT -> "DISBURSE";
+            case PAYMENT -> "PAYMENT";
+        };
+    }
+
+    private void handleExportPdf(Terminal terminal, Attributes origAttr, NonBlockingReader reader,
+                                 AccountDTO account, User user, int width) {
+        try {
+            LocalDateTime from = LocalDateTime.now().minusDays(30);
+            LocalDateTime to = LocalDateTime.now();
+            String outputPath = (reportController != null)
+                    ? reportController.generateStatement(user, account, from, to)
+                    : "statement_" + account.getAccountNumber() + ".pdf";
+
+            StringBuilder sb = new StringBuilder();
+            sb.append(TUIBox.top(width)).append("\n");
+            sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > TRANSACTIONS LEDGER > STATEMENT EXPORT"), width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.center(ConsoleTheme.success("✔ Official PDF Statement Exported Successfully!"), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.line(String.format("  Target Account : %s (%s - %s)", account.getAccountNumber(), account.getAccountType(), account.getCurrency()), width)).append("\n");
+            sb.append(TUIBox.line("  Statement Term : Last 30 Days (Standard Audit Period)", width)).append("\n");
+            sb.append(TUIBox.line("  File Location  : " + ConsoleTheme.highlight(outputPath), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
+            sb.append(" ").append(ConsoleTheme.muted("Press [Enter] or [Esc] to return to ledger")).append("\n");
+
+            ScreenRenderer.render(sb.toString(), true);
+            while (true) {
+                KeyEvent event = TUIFormHelper.readKey(reader);
+                if (event.action() == KeyAction.ENTER || event.action() == KeyAction.ESCAPE || event.ch() == 'b' || event.ch() == 'B') {
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            StringBuilder errSb = new StringBuilder();
+            errSb.append(TUIBox.top(width)).append("\n");
+            errSb.append(TUIBox.line(ConsoleTheme.error(" Export Failed: " + e.getMessage()), width)).append("\n");
+            errSb.append(TUIBox.divider(width)).append("\n");
+            errSb.append(TUIBox.bottom(width)).append("\n");
+            errSb.append(" ").append(ConsoleTheme.muted("Press [Enter] or [Esc] to return to ledger")).append("\n");
+            ScreenRenderer.render(errSb.toString(), true);
+            try {
+                while (true) {
+                    KeyEvent event = TUIFormHelper.readKey(reader);
+                    if (event.action() == KeyAction.ENTER || event.action() == KeyAction.ESCAPE) {
+                        break;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleViewDetails(Terminal terminal, Attributes origAttr, NonBlockingReader reader,
+                                   TransactionView tv, AccountDTO account, Map<Long, BigDecimal> runningBalanceMap,
+                                   Map<Long, String> categoryNames, int width) {
+        Transaction tx = tv.getTransaction();
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        String catName = "None / General";
+        if (tx.getCategoryId() != null && categoryNames.containsKey(tx.getCategoryId())) {
+            catName = categoryNames.get(tx.getCategoryId());
+        }
+
+        BigDecimal rowBal = runningBalanceMap.getOrDefault(tx.getTransactionId(), account.getBalance());
+        String sign = tv.getDirection() == TransactionDirection.INCOME ? "+" : "-";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(TUIBox.top(width)).append("\n");
+        sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > TRANSACTIONS LEDGER > TRANSACTION DETAILS"), width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+
+        sb.append(TUIBox.line(String.format("  Transaction ID   : #%d", tx.getTransactionId()), width)).append("\n");
+        String dateStr = tx.getTransactionDate() != null ? tx.getTransactionDate().format(dtf) : "N/A";
+        sb.append(TUIBox.line(String.format("  Date & Time      : %s", dateStr), width)).append("\n");
+        sb.append(TUIBox.line(String.format("  Transaction Type : %s", formatTransactionType(tx.getTransactionType())), width)).append("\n");
+        sb.append(TUIBox.line(String.format("  Account          : %s (%s)", account.getAccountNumber(), account.getCurrency()), width)).append("\n");
+        sb.append(TUIBox.line(String.format("  Amount           : %s$%s %s", sign, df.format(tx.getAmount()), account.getCurrency()), width)).append("\n");
+        sb.append(TUIBox.line(String.format("  Running Balance  : $%s %s", df.format(rowBal), account.getCurrency()), width)).append("\n");
+        sb.append(TUIBox.line(String.format("  Category         : %s", catName), width)).append("\n");
+        sb.append(TUIBox.line(String.format("  Description      : %s", tx.getDescription() != null ? tx.getDescription() : "-"), width)).append("\n");
+        sb.append(TUIBox.line(String.format("  Status           : %s", tx.getStatus() != null ? tx.getStatus().name() : "COMPLETED"), width)).append("\n");
+        if (tx.getIdempotencyKey() != null) {
+            sb.append(TUIBox.line(String.format("  Idempotency Key  : %s", tx.getIdempotencyKey()), width)).append("\n");
+        }
+
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.bottom(width)).append("\n");
+        sb.append(" ").append(ConsoleTheme.muted("Press [Enter] or [Esc] to return to ledger")).append("\n");
+
+        ScreenRenderer.render(sb.toString(), true);
+        try {
+            while (true) {
+                KeyEvent event = TUIFormHelper.readKey(reader);
+                if (event.action() == KeyAction.ENTER || event.action() == KeyAction.ESCAPE || event.ch() == 'b' || event.ch() == 'B') {
+                    break;
+                }
+            }
+        } catch (Exception ignored) {}
     }
 }

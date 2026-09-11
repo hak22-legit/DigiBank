@@ -40,13 +40,12 @@ public class AccountScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
-        TUILayout.printHeader(userDto.getFullName());
-        TUILayout.printScreenTitle("My Bank Accounts");
+        ConsoleMenu menu = new ConsoleMenu()
+                .setHeaderSubtitle(userDto.getFullName())
+                .setScreenTitle("My Bank Accounts");
 
         if (statusMessage != null) {
-            TUILayout.printAlert(statusMessage, isErrorStatus);
-            System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
+            menu.setAlert(statusMessage, isErrorStatus);
             statusMessage = null;
         }
 
@@ -54,7 +53,7 @@ public class AccountScreen implements Screen {
         try {
             accounts = accountController.getAccountsForUser(userEntity);
         } catch (Exception e) {
-            TUILayout.printAlert("Failed to fetch accounts: " + e.getMessage(), true);
+            menu.setAlert("Failed to fetch accounts: " + e.getMessage(), true);
         }
 
         // Render Accounts Table
@@ -79,15 +78,12 @@ public class AccountScreen implements Screen {
 
                 table.addRow(accNum, type, balance, curr, status);
             }
-            table.print();
+            menu.setCustomContent(table.render());
         } else {
-            System.out.println(TUIBox.center(ConsoleTheme.muted("No bank accounts found for this user."), TUILayout.APP_WIDTH));
+            menu.setCustomContent(TUIBox.center(ConsoleTheme.muted("No bank accounts found for this user."), TUILayout.APP_WIDTH) + "\n");
         }
 
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-
-        ConsoleMenu menu = new ConsoleMenu()
-                .addItem("01", "Open New Account", "Create a new Savings or Checking account")
+        menu.addItem("01", "Open New Account", "Create a new Savings or Checking account")
                 .addItem("02", "Select Active Account", "Set default account for quick operations")
                 .addItem("03", "Back to Main Menu", "Return to customer dashboard");
 
@@ -105,23 +101,28 @@ public class AccountScreen implements Screen {
     }
 
     private void handleCreateAccount(User userEntity, TUISession session) {
-        session.clearScreen();
-        TUILayout.printHeader("Account Setup");
-        TUILayout.printScreenTitle("Open New Bank Account");
-
-        System.out.println(TUIBox.line(ConsoleTheme.info("Select account type:"), TUILayout.APP_WIDTH));
-        System.out.println(TUIBox.line("  1. SAVINGS", TUILayout.APP_WIDTH));
-        System.out.println(TUIBox.line("  2. CHECKING", TUILayout.APP_WIDTH));
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
+        StringBuilder sb = new StringBuilder();
+        sb.append(TUILayout.header("Account Setup"));
+        sb.append(TUILayout.screenTitle("Open New Bank Account"));
+        sb.append(TUIBox.line(ConsoleTheme.info("Select account type:"), TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.line("  1. SAVINGS", TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.line("  2. CHECKING", TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.bottom(TUILayout.APP_WIDTH)).append("\n");
+        ScreenRenderer.render(sb.toString(), true);
 
         String typeChoice = ConsolePrompt.promptText("Account Type [1 or 2]");
         AccountType type = "2".equals(typeChoice) ? AccountType.CHECKING : AccountType.SAVINGS;
 
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-        System.out.println(TUIBox.line(ConsoleTheme.info("Select currency:"), TUILayout.APP_WIDTH));
-        System.out.println(TUIBox.line("  1. USD (United States Dollar)", TUILayout.APP_WIDTH));
-        System.out.println(TUIBox.line("  2. KHR (Cambodian Riel)", TUILayout.APP_WIDTH));
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
+        sb = new StringBuilder();
+        sb.append(TUILayout.header("Account Setup"));
+        sb.append(TUILayout.screenTitle("Open New Bank Account"));
+        sb.append(TUIBox.line(ConsoleTheme.info("Select currency:"), TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.line("  1. USD (United States Dollar)", TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.line("  2. KHR (Cambodian Riel)", TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUIBox.bottom(TUILayout.APP_WIDTH)).append("\n");
+        ScreenRenderer.render(sb.toString(), true);
 
         String currChoice = ConsolePrompt.promptText("Currency [1 or 2]");
         Currency currency = "2".equals(currChoice) ? Currency.KHR : Currency.USD;
@@ -153,11 +154,10 @@ public class AccountScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
-        TUILayout.printHeader("Active Account");
-        TUILayout.printScreenTitle("Select Primary Account");
+        ConsoleMenu menu = new ConsoleMenu()
+                .setHeaderSubtitle("Active Account")
+                .setScreenTitle("Select Primary Account");
 
-        ConsoleMenu menu = new ConsoleMenu();
         for (int i = 0; i < accounts.size(); i++) {
             AccountDTO acc = accounts.get(i);
             String code = String.format("%02d", i + 1);

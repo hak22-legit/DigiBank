@@ -2,6 +2,7 @@ package com.bank.console.screens;
 
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -78,11 +79,6 @@ public class WelcomeScreen implements Screen {
 
     private void renderScreen(TUISession session, int selectedIndex, boolean firstRender) {
         StringBuilder sb = new StringBuilder();
-        if (firstRender) {
-            sb.append(ConsoleTheme.CLEAR_SCREEN);
-        } else {
-            sb.append("\u001B[H"); // Cursor Home without wiping screen
-        }
         int width = TUILayout.APP_WIDTH;
 
         // Top Box
@@ -113,8 +109,7 @@ public class WelcomeScreen implements Screen {
         sb.append("\n");
         sb.append(TUIBox.statusLine("Ready", "Guest", "UTF-8", width)).append("\n");
 
-        System.out.print(sb.toString());
-        System.out.flush();
+        ScreenRenderer.render(sb.toString(), firstRender);
     }
 
     private void executeChoice(int index, ScreenNavigator navigator, TUISession session) {

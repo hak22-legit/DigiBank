@@ -3,6 +3,7 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -191,11 +192,6 @@ public class CustomerDashboardScreen implements Screen {
     private void renderScreen(TUISession session, UserDTO userDto, User userEntity,
                              int selectedIndex, boolean inCashSubMenu, int cashSubIndex, boolean firstRender) {
         StringBuilder sb = new StringBuilder();
-        if (firstRender) {
-            sb.append(ConsoleTheme.CLEAR_SCREEN);
-        } else {
-            sb.append("\u001B[H"); // Cursor Home without wiping screen
-        }
         int width = TUILayout.APP_WIDTH;
         DecimalFormat df = new DecimalFormat("#,##0.00");
 
@@ -322,8 +318,7 @@ public class CustomerDashboardScreen implements Screen {
             sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1-6] Quick Select  •  [Esc] Logout")).append("\n");
         }
 
-        System.out.print(sb.toString());
-        System.out.flush();
+        ScreenRenderer.render(sb.toString(), firstRender);
     }
 
     private void executeAction(int choice, ScreenNavigator navigator, TUISession session) {

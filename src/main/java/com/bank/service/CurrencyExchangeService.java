@@ -20,13 +20,19 @@ import java.util.Optional;
 
 public class CurrencyExchangeService {
 
-    private static final BigDecimal USD_KHR_RATE = new BigDecimal("4000");
+    private static final BigDecimal DEFAULT_USD_KHR_RATE = new BigDecimal("4100");
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final LiveCurrencyService liveCurrencyService;
 
     public CurrencyExchangeService(AccountRepository accountRepository, TransactionRepository transactionRepository) {
+        this(accountRepository, transactionRepository, new LiveCurrencyService());
+    }
+
+    public CurrencyExchangeService(AccountRepository accountRepository, TransactionRepository transactionRepository, LiveCurrencyService liveCurrencyService) {
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
+        this.liveCurrencyService = liveCurrencyService;
     }
 
     public ExchangeReceiptDTO exchange(User user, Long fromAccountId, Long toAccountId, BigDecimal amount) {
@@ -76,12 +82,16 @@ public class CurrencyExchangeService {
             // Calculate conversion
             BigDecimal convertedAmount;
             BigDecimal rateUsed;
+            BigDecimal usdKhrRate = (liveCurrencyService != null)
+                    ? liveCurrencyService.getRate("USD", "KHR")
+                    : DEFAULT_USD_KHR_RATE;
+
             if (fromAccount.getCurrency() == Currency.USD && toAccount.getCurrency() == Currency.KHR) {
-                convertedAmount = amount.multiply(USD_KHR_RATE).setScale(4, RoundingMode.HALF_UP);
-                rateUsed = USD_KHR_RATE;
+                convertedAmount = amount.multiply(usdKhrRate).setScale(4, RoundingMode.HALF_UP);
+                rateUsed = usdKhrRate;
             } else if (fromAccount.getCurrency() == Currency.KHR && toAccount.getCurrency() == Currency.USD) {
-                convertedAmount = amount.divide(USD_KHR_RATE, 4, RoundingMode.HALF_UP);
-                rateUsed = BigDecimal.ONE.divide(USD_KHR_RATE, 4, RoundingMode.HALF_UP);
+                convertedAmount = amount.divide(usdKhrRate, 4, RoundingMode.HALF_UP);
+                rateUsed = BigDecimal.ONE.divide(usdKhrRate, 4, RoundingMode.HALF_UP);
             } else {
                 throw new CurrencyMismatchException("Unsupported currency pair for exchange");
             }

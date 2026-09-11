@@ -5,6 +5,7 @@ import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
 import com.bank.console.components.ConsoleFormatter;
 import com.bank.console.components.ConsolePrompt;
+import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
@@ -75,11 +76,6 @@ public class AdminLoanScreen implements Screen {
                 }
 
                 StringBuilder sb = new StringBuilder();
-                if (firstRender) {
-                    sb.append(ConsoleTheme.CLEAR_SCREEN);
-                } else {
-                    sb.append("\u001B[H");
-                }
 
                 if (pendingLoans == null || pendingLoans.isEmpty()) {
                     sb.append(TUIBox.top(width)).append("\n");
@@ -97,8 +93,7 @@ public class AdminLoanScreen implements Screen {
                     }
                     sb.append(ConsoleTheme.muted("  [Enter/Esc] Return to Admin Dashboard")).append("\n");
 
-                    System.out.print(sb.toString());
-                    System.out.flush();
+                    ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
 
                     int ch = reader.read();
@@ -208,8 +203,7 @@ public class AdminLoanScreen implements Screen {
                 }
                 sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [A/R/N/P] Quick Action  •  [Esc] Back")).append("\n");
 
-                System.out.print(sb.toString());
-                System.out.flush();
+                ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
                 int ch = reader.read();
@@ -283,16 +277,17 @@ public class AdminLoanScreen implements Screen {
     }
 
     private void handleApprove(TUISession session, Loan targetLoan, Admin adminEntity, BigDecimal defaultAmount, BigDecimal defaultRate) {
-        session.clearScreen();
         int width = TUILayout.APP_WIDTH;
-        System.out.println(TUIBox.top(width));
-        System.out.println(TUIBox.line(" " + ConsoleTheme.bold("DIGIBANK CORE > ADMIN > UNDERWRITE LOAN #" + targetLoan.getLoanId()), width));
-        System.out.println(TUIBox.divider(width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.line("  Applicant: #USR-" + targetLoan.getUserId() + " | Requested: " + ConsoleFormatter.formatCurrency(targetLoan.getRequestedAmount()), width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.bottom(width));
-        System.out.println(TUIBox.rule(width));
+        StringBuilder appSb = new StringBuilder();
+        appSb.append(TUIBox.top(width)).append("\n");
+        appSb.append(TUIBox.line(" " + ConsoleTheme.bold("DIGIBANK CORE > ADMIN > UNDERWRITE LOAN #" + targetLoan.getLoanId()), width)).append("\n");
+        appSb.append(TUIBox.divider(width)).append("\n");
+        appSb.append(TUIBox.emptyLine(width)).append("\n");
+        appSb.append(TUIBox.line("  Applicant: #USR-" + targetLoan.getUserId() + " | Requested: " + ConsoleFormatter.formatCurrency(targetLoan.getRequestedAmount()), width)).append("\n");
+        appSb.append(TUIBox.emptyLine(width)).append("\n");
+        appSb.append(TUIBox.bottom(width)).append("\n");
+        appSb.append(TUIBox.rule(width)).append("\n");
+        ScreenRenderer.render(appSb.toString());
 
         String amtStr = ConsolePrompt.promptOptional("Approved Amount ($)", defaultAmount.toPlainString());
         BigDecimal approvedAmt;
@@ -333,16 +328,17 @@ public class AdminLoanScreen implements Screen {
     }
 
     private void handleReject(TUISession session, Loan targetLoan, Admin adminEntity) {
-        session.clearScreen();
         int width = TUILayout.APP_WIDTH;
-        System.out.println(TUIBox.top(width));
-        System.out.println(TUIBox.line(" " + ConsoleTheme.bold("DIGIBANK CORE > ADMIN > REJECT LOAN #" + targetLoan.getLoanId()), width));
-        System.out.println(TUIBox.divider(width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.line("  Applicant: #USR-" + targetLoan.getUserId() + " | Requested: " + ConsoleFormatter.formatCurrency(targetLoan.getRequestedAmount()), width));
-        System.out.println(TUIBox.emptyLine(width));
-        System.out.println(TUIBox.bottom(width));
-        System.out.println(TUIBox.rule(width));
+        StringBuilder rejSb = new StringBuilder();
+        rejSb.append(TUIBox.top(width)).append("\n");
+        rejSb.append(TUIBox.line(" " + ConsoleTheme.bold("DIGIBANK CORE > ADMIN > REJECT LOAN #" + targetLoan.getLoanId()), width)).append("\n");
+        rejSb.append(TUIBox.divider(width)).append("\n");
+        rejSb.append(TUIBox.emptyLine(width)).append("\n");
+        rejSb.append(TUIBox.line("  Applicant: #USR-" + targetLoan.getUserId() + " | Requested: " + ConsoleFormatter.formatCurrency(targetLoan.getRequestedAmount()), width)).append("\n");
+        rejSb.append(TUIBox.emptyLine(width)).append("\n");
+        rejSb.append(TUIBox.bottom(width)).append("\n");
+        rejSb.append(TUIBox.rule(width)).append("\n");
+        ScreenRenderer.render(rejSb.toString());
 
         String reason = ConsolePrompt.promptText("Rejection Reason (Debt-to-Income / Credit Score / Incomplete)");
         if (reason == null || reason.trim().isEmpty()) {

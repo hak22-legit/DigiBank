@@ -20,11 +20,9 @@ public class UserMainMenuScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
-        TUILayout.printHeader("Welcome, " + user.getFullName());
-        TUILayout.printScreenTitle("Customer Banking Portal");
-
         ConsoleMenu menu = new ConsoleMenu()
+                .setHeaderSubtitle("Welcome, " + user.getFullName())
+                .setScreenTitle("Customer Banking Portal")
                 .addItem("01", "Dashboard", "View financial overview & recent activity")
                 .addItem("02", "Accounts", "Manage your checking and savings accounts")
                 .addItem("03", "Deposit", "Deposit funds into an account")

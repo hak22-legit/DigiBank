@@ -36,9 +36,9 @@ public class AdminUserManagementScreen implements Screen {
             return;
         }
 
-        session.clearScreen();
-        TUILayout.printHeader("Staff: " + adminDto.getUsername() + " (" + adminDto.getRole() + ")");
-        TUILayout.printScreenTitle("Customer Profile Management");
+        StringBuilder sb = new StringBuilder();
+        sb.append(TUILayout.header("Staff: " + adminDto.getUsername() + " (" + adminDto.getRole() + ")"));
+        sb.append(TUILayout.screenTitle("Customer Profile Management"));
 
         try {
             List<User> users = adminController.getAllUsers(adminEntity);
@@ -64,16 +64,17 @@ public class AdminUserManagementScreen implements Screen {
 
                     table.addRow(id, uname, name, email, phone, status);
                 }
-                table.print();
+                sb.append(table.render());
             } else {
-                System.out.println(TUIBox.center(ConsoleTheme.muted("No customer accounts registered in the database."), TUILayout.APP_WIDTH));
+                sb.append(TUIBox.center(ConsoleTheme.muted("No customer accounts registered in the database."), TUILayout.APP_WIDTH)).append("\n");
             }
         } catch (Exception e) {
-            TUILayout.printAlert("Failed to load user directory: " + e.getMessage(), true);
+            sb.append(TUILayout.alert("Failed to load user directory: " + e.getMessage(), true));
         }
 
-        System.out.println(TUIBox.emptyLine(TUILayout.APP_WIDTH));
-        TUILayout.printFooter("Press Enter to return to Admin Menu");
+        sb.append(TUIBox.emptyLine(TUILayout.APP_WIDTH)).append("\n");
+        sb.append(TUILayout.footer("Press Enter to return to Admin Menu"));
+        ScreenRenderer.render(sb.toString(), true);
         ConsolePrompt.pause();
         navigator.pop();
     }
