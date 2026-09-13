@@ -23,7 +23,6 @@ import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +32,7 @@ import java.util.UUID;
 /**
  * SCREEN 6: FUND TRANSFER (TRANSACTIONS) (82 Columns)
  * Enclosed form, dynamic beneficiary resolution, live cross-currency exchange math,
- * and pure keystroke navigation with zero trailing prompts.
+ * beneficiary account normalization, action buttons, and two-step confirmation.
  */
 public class TransferScreen implements Screen {
     private final AccountController accountController;
@@ -55,6 +54,16 @@ public class TransferScreen implements Screen {
 
     public TransferScreen(AccountController accountController) {
         this.accountController = accountController;
+    }
+
+    public static String normalizeAccountNumber(String input) {
+        if (input == null) return "";
+        String trimmed = input.trim();
+        if (trimmed.isEmpty()) return "";
+        if (trimmed.toUpperCase().startsWith("DGB-")) {
+            return trimmed.toUpperCase();
+        }
+        return "DGB-" + trimmed.toUpperCase();
     }
 
     private static String getCurrencySymbol(Currency currency) {
@@ -159,22 +168,27 @@ public class TransferScreen implements Screen {
 
         DecimalFormat df = new DecimalFormat("#,##0.00");
 
-        // Form state
-        int focusedField = 0; // 0: Destination Acc, 1: Amount, 2: Remark, 3: Category
+        // Form state:
+        // 0: Destination Acc
+        // 1: Transfer Amount
+        // 2: Remark (Optional)
+        // 3: Category
+        // 4: [1] Review & Submit Transfer
+        // 5: [2] Cancel & Return
+        int focusedField = 0;
         StringBuilder destAccBuf = new StringBuilder();
         StringBuilder amountBuf = new StringBuilder();
         StringBuilder remarkBuf = new StringBuilder();
-        int selectedCategoryIdx = 6; // Default to Bills & Utilities matching mockup or 0
-        boolean categoryChosen = true;
+        int selectedCategoryIdx = 6; // Default to Bills & Utilities
         String statusMessage = null;
 
         Account resolvedDestAcc = null;
         String resolvedBeneficiaryName = null;
 
-        enum ScreenState { FORM, CATEGORY_SELECT, CONFIRMATION, COMPLETED }
+        enum ScreenState { FORM, CATEGORY_SELECT, CONFIRMATION }
         ScreenState state = ScreenState.FORM;
         int categoryHighlightIdx = selectedCategoryIdx;
-        int confirmActionIdx = 0; // 0: Confirm, 1: Cancel
+        int confirmActionIdx = 0; // 0: Authorize & Send Transfer, 1: Back to Edit Details
 
         Terminal terminal = session.getTerminal();
         Attributes origAttr = terminal.enterRawMode();
@@ -208,21 +222,52 @@ public class TransferScreen implements Screen {
                     }
                     sb.append(TUIFormHelper.formatInfoRow("Beneficiary Name", benDisplay, 18, 50)).append("\n");
 
-                    String amountStr = amountBuf.toString().isEmpty() ? "" : (amountBuf.toString() + " " + sourceAccount.getCurrency());
-                    sb.append(TUIFormHelper.formatFieldRow("Transfer Amount", amountStr, focusedField == 1, 18, 50)).append("\n");
+                    String amountDisplay;
+                    if (focusedField == 1) {
+                        amountDisplay = amountBuf.toString().isEmpty() ? "" : (amountBuf.toString() + " " + sourceAccount.getCurrency());
+                    } else {
+                        if (amountBuf.length() > 0) {
+                            try {
+                                BigDecimal amt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
+                                amountDisplay = df.format(amt) + " " + sourceAccount.getCurrency();
+                            } catch (Exception e) {
+                                amountDisplay = amountBuf.toString() + " " + sourceAccount.getCurrency();
+                            }
+                        } else {
+                            amountDisplay = "";
+                        }
+                    }
+                    sb.append(TUIFormHelper.formatFieldRow("Transfer Amount", amountDisplay, focusedField == 1, 18, 50)).append("\n");
                     sb.append(TUIFormHelper.formatFieldRow("Remark (Optional)", remarkBuf.toString(), focusedField == 2, 18, 50)).append("\n");
 
                     String catDisplay = String.format("(%d) %s", selectedCategoryIdx, TRANSFER_CATEGORIES[selectedCategoryIdx]);
                     sb.append(TUIFormHelper.formatFieldRow("Category", catDisplay, focusedField == 3, 18, 50)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
+                    // ACTION Compartment
+                    sb.append(TUIBox.divider(width)).append("\n");
+                    sb.append(TUIBox.line("  ACTION", width)).append("\n");
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
+
+                    String btn1 = "[1] Review & Submit Transfer";
+                    String btn2 = "[2] Cancel & Return";
+                    String actionLine;
+                    if (focusedField == 4) {
+                        actionLine = "  ▸ " + ConsoleTheme.highlight(btn1) + "                  " + btn2;
+                    } else if (focusedField == 5) {
+                        actionLine = "    " + btn1 + "                ▸ " + ConsoleTheme.highlight(btn2);
+                    } else {
+                        actionLine = "  ▸ " + btn1 + "                  " + btn2;
+                    }
+                    sb.append(TUIBox.line(actionLine, width)).append("\n");
+
                     if (statusMessage != null) {
+                        sb.append(TUIBox.divider(width)).append("\n");
                         sb.append(TUIBox.line(ConsoleTheme.error(" Status: " + statusMessage), width)).append("\n");
                     }
 
-                    sb.append(TUIBox.divider(width)).append("\n");
                     sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Enter] Confirm Field  •  [Esc] Cancel")).append("\n");
+                    sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Enter] Action / Edit  •  [1/2] Quick Action  •  [Esc] Back")).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -233,9 +278,17 @@ public class TransferScreen implements Screen {
                         navigator.pop();
                         return;
                     } else if (event.action() == KeyAction.TAB || event.action() == KeyAction.DOWN) {
-                        focusedField = (focusedField + 1) % 4;
+                        focusedField = (focusedField + 1) % 6;
                     } else if (event.action() == KeyAction.SHIFT_TAB || event.action() == KeyAction.UP) {
-                        focusedField = (focusedField - 1 + 4) % 4;
+                        focusedField = (focusedField - 1 + 6) % 6;
+                    } else if (event.action() == KeyAction.LEFT) {
+                        if (focusedField == 5) {
+                            focusedField = 4;
+                        }
+                    } else if (event.action() == KeyAction.RIGHT) {
+                        if (focusedField == 4) {
+                            focusedField = 5;
+                        }
                     } else if (event.action() == KeyAction.BACKSPACE) {
                         statusMessage = null;
                         if (focusedField == 0 && destAccBuf.length() > 0) {
@@ -250,25 +303,27 @@ public class TransferScreen implements Screen {
                     } else if (event.action() == KeyAction.ENTER) {
                         statusMessage = null;
                         if (focusedField == 0) {
-                            // Validate destination account
-                            String destNum = destAccBuf.toString().trim();
-                            if (destNum.isEmpty()) {
+                            // Validate & resolve destination account with auto-normalization
+                            String normalized = normalizeAccountNumber(destAccBuf.toString());
+                            if (normalized.isEmpty()) {
                                 statusMessage = "Please enter destination account number";
                             } else {
                                 try {
-                                    Account acc = accountController.findAccountByNumber(destNum);
+                                    Account acc = accountController.findAccountByNumber(normalized);
                                     if (acc.getAccountId().equals(sourceAccount.getAccountId())) {
                                         statusMessage = "Cannot transfer to the same account";
                                         resolvedDestAcc = null;
                                         resolvedBeneficiaryName = null;
                                     } else {
                                         resolvedDestAcc = acc;
+                                        destAccBuf.setLength(0);
+                                        destAccBuf.append(acc.getAccountNumber());
                                         Optional<User> benUser = ControllerFactory.getUserRepository().findById(acc.getUserId());
                                         resolvedBeneficiaryName = benUser.map(User::getFullName).orElse("VERIFIED BENEFICIARY");
                                         focusedField = 1;
                                     }
                                 } catch (Exception e) {
-                                    statusMessage = "Destination account not found: " + destNum;
+                                    statusMessage = "Destination account not found: " + normalized;
                                     resolvedDestAcc = null;
                                     resolvedBeneficiaryName = null;
                                 }
@@ -277,7 +332,18 @@ public class TransferScreen implements Screen {
                             if (amountBuf.toString().trim().isEmpty()) {
                                 statusMessage = "Please enter transfer amount";
                             } else {
-                                focusedField = 2;
+                                try {
+                                    BigDecimal amt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
+                                    if (amt.compareTo(BigDecimal.ZERO) <= 0) {
+                                        statusMessage = "Amount must be greater than zero.";
+                                    } else if (sourceAccount.getBalance().compareTo(amt) < 0) {
+                                        statusMessage = "Insufficient balance in source account";
+                                    } else {
+                                        focusedField = 2;
+                                    }
+                                } catch (Exception e) {
+                                    statusMessage = "Invalid transfer amount format";
+                                }
                             }
                         } else if (focusedField == 2) {
                             if (remarkBuf.toString().trim().isEmpty()) {
@@ -289,6 +355,65 @@ public class TransferScreen implements Screen {
                             state = ScreenState.CATEGORY_SELECT;
                             categoryHighlightIdx = selectedCategoryIdx;
                             firstRender = true;
+                        } else if (focusedField == 4) {
+                            // [1] Review & Submit Transfer
+                            String normalized = normalizeAccountNumber(destAccBuf.toString());
+                            if (normalized.isEmpty()) {
+                                statusMessage = "Please enter destination account number";
+                                focusedField = 0;
+                            } else if (resolvedDestAcc == null) {
+                                try {
+                                    Account acc = accountController.findAccountByNumber(normalized);
+                                    if (acc.getAccountId().equals(sourceAccount.getAccountId())) {
+                                        statusMessage = "Cannot transfer to the same account";
+                                        focusedField = 0;
+                                    } else {
+                                        resolvedDestAcc = acc;
+                                        destAccBuf.setLength(0);
+                                        destAccBuf.append(acc.getAccountNumber());
+                                        Optional<User> benUser = ControllerFactory.getUserRepository().findById(acc.getUserId());
+                                        resolvedBeneficiaryName = benUser.map(User::getFullName).orElse("VERIFIED BENEFICIARY");
+                                    }
+                                } catch (Exception e) {
+                                    statusMessage = "Destination account not found: " + normalized;
+                                    focusedField = 0;
+                                }
+                            }
+
+                            if (resolvedDestAcc != null) {
+                                String amtStr = amountBuf.toString().replace(",", "").replace("$", "").trim();
+                                if (amtStr.isEmpty()) {
+                                    statusMessage = "Please enter transfer amount";
+                                    focusedField = 1;
+                                } else {
+                                    try {
+                                        BigDecimal amt = new BigDecimal(amtStr);
+                                        if (amt.compareTo(BigDecimal.ZERO) <= 0) {
+                                            statusMessage = "Amount must be greater than zero.";
+                                            focusedField = 1;
+                                        } else if (sourceAccount.getBalance().compareTo(amt) < 0) {
+                                            statusMessage = "Insufficient balance in source account";
+                                            focusedField = 1;
+                                        } else {
+                                            if (remarkBuf.toString().trim().isEmpty()) {
+                                                remarkBuf.setLength(0);
+                                                remarkBuf.append("Fund Transfer");
+                                            }
+                                            state = ScreenState.CONFIRMATION;
+                                            confirmActionIdx = 0;
+                                            firstRender = true;
+                                        }
+                                    } catch (Exception e) {
+                                        statusMessage = "Invalid transfer amount format";
+                                        focusedField = 1;
+                                    }
+                                }
+                            }
+                        } else if (focusedField == 5) {
+                            // [2] Cancel & Return
+                            terminal.setAttributes(origAttr);
+                            navigator.pop();
+                            return;
                         }
                     } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
                         char c = event.ch();
@@ -296,10 +421,10 @@ public class TransferScreen implements Screen {
                         if (focusedField == 0) {
                             if (destAccBuf.length() < 24) {
                                 destAccBuf.append(c);
-                                // Opportunistically look up if length seems complete (e.g. starts with DGB-)
-                                String currentNum = destAccBuf.toString().trim();
+                                // Opportunistically look up normalized number
+                                String norm = normalizeAccountNumber(destAccBuf.toString());
                                 try {
-                                    Account acc = accountController.findAccountByNumber(currentNum);
+                                    Account acc = accountController.findAccountByNumber(norm);
                                     if (!acc.getAccountId().equals(sourceAccount.getAccountId())) {
                                         resolvedDestAcc = acc;
                                         Optional<User> benUser = ControllerFactory.getUserRepository().findById(acc.getUserId());
@@ -317,46 +442,65 @@ public class TransferScreen implements Screen {
                             if (remarkBuf.length() < 40) {
                                 remarkBuf.append(c);
                             }
-                        }
-                    }
-
-                    // Proceed to Confirmation if all fields are valid and user triggers Enter from category or submit
-                    if (focusedField == 3 && event.action() == KeyAction.ENTER && state == ScreenState.FORM) {
-                        // Validate destination account
-                        if (resolvedDestAcc == null) {
-                            String destNum = destAccBuf.toString().trim();
-                            try {
-                                Account acc = accountController.findAccountByNumber(destNum);
-                                if (acc.getAccountId().equals(sourceAccount.getAccountId())) {
-                                    statusMessage = "Cannot transfer to same account";
-                                } else {
-                                    resolvedDestAcc = acc;
-                                    Optional<User> benUser = ControllerFactory.getUserRepository().findById(acc.getUserId());
-                                    resolvedBeneficiaryName = benUser.map(User::getFullName).orElse("VERIFIED BENEFICIARY");
-                                }
-                            } catch (Exception e) {
-                                statusMessage = "Destination account not found";
-                            }
-                        }
-
-                        if (resolvedDestAcc != null) {
-                            try {
-                                BigDecimal amt = new BigDecimal(amountBuf.toString().trim());
-                                if (amt.compareTo(BigDecimal.ZERO) <= 0) {
-                                    statusMessage = "Amount must be greater than zero.";
-                                } else if (sourceAccount.getBalance().compareTo(amt) < 0) {
-                                    statusMessage = "Insufficient balance in source account";
-                                } else {
-                                    if (remarkBuf.toString().trim().isEmpty()) {
-                                        remarkBuf.setLength(0);
-                                        remarkBuf.append("Fund Transfer");
+                        } else if (focusedField >= 3) {
+                            if (c == '1') {
+                                // Trigger Review & Submit
+                                String normalized = normalizeAccountNumber(destAccBuf.toString());
+                                if (normalized.isEmpty()) {
+                                    statusMessage = "Please enter destination account number";
+                                    focusedField = 0;
+                                } else if (resolvedDestAcc == null) {
+                                    try {
+                                        Account acc = accountController.findAccountByNumber(normalized);
+                                        if (acc.getAccountId().equals(sourceAccount.getAccountId())) {
+                                            statusMessage = "Cannot transfer to the same account";
+                                            focusedField = 0;
+                                        } else {
+                                            resolvedDestAcc = acc;
+                                            destAccBuf.setLength(0);
+                                            destAccBuf.append(acc.getAccountNumber());
+                                            Optional<User> benUser = ControllerFactory.getUserRepository().findById(acc.getUserId());
+                                            resolvedBeneficiaryName = benUser.map(User::getFullName).orElse("VERIFIED BENEFICIARY");
+                                        }
+                                    } catch (Exception e) {
+                                        statusMessage = "Destination account not found: " + normalized;
+                                        focusedField = 0;
                                     }
-                                    state = ScreenState.CONFIRMATION;
-                                    confirmActionIdx = 0;
-                                    firstRender = true;
                                 }
-                            } catch (Exception e) {
-                                statusMessage = "Invalid transfer amount format";
+
+                                if (resolvedDestAcc != null) {
+                                    String amtStr = amountBuf.toString().replace(",", "").replace("$", "").trim();
+                                    if (amtStr.isEmpty()) {
+                                        statusMessage = "Please enter transfer amount";
+                                        focusedField = 1;
+                                    } else {
+                                        try {
+                                            BigDecimal amt = new BigDecimal(amtStr);
+                                            if (amt.compareTo(BigDecimal.ZERO) <= 0) {
+                                                statusMessage = "Amount must be greater than zero.";
+                                                focusedField = 1;
+                                            } else if (sourceAccount.getBalance().compareTo(amt) < 0) {
+                                                statusMessage = "Insufficient balance in source account";
+                                                focusedField = 1;
+                                            } else {
+                                                if (remarkBuf.toString().trim().isEmpty()) {
+                                                    remarkBuf.setLength(0);
+                                                    remarkBuf.append("Fund Transfer");
+                                                }
+                                                state = ScreenState.CONFIRMATION;
+                                                confirmActionIdx = 0;
+                                                firstRender = true;
+                                            }
+                                        } catch (Exception e) {
+                                            statusMessage = "Invalid transfer amount format";
+                                            focusedField = 1;
+                                        }
+                                    }
+                                }
+                            } else if (c == '2') {
+                                terminal.setAttributes(origAttr);
+                                navigator.pop();
+                                return;
                             }
                         }
                     }
@@ -398,15 +542,17 @@ public class TransferScreen implements Screen {
                     } else if (event.action() == KeyAction.ENTER) {
                         selectedCategoryIdx = categoryHighlightIdx;
                         state = ScreenState.FORM;
+                        focusedField = 4; // Shift focus to [1] Review & Submit Transfer
                         firstRender = true;
                     } else if (event.action() == KeyAction.DIGIT && event.ch() >= '0' && event.ch() < '0' + TRANSFER_CATEGORIES.length) {
                         selectedCategoryIdx = event.ch() - '0';
                         state = ScreenState.FORM;
+                        focusedField = 4; // Shift focus to [1] Review & Submit Transfer
                         firstRender = true;
                     }
 
                 } else if (state == ScreenState.CONFIRMATION) {
-                    BigDecimal amount = new BigDecimal(amountBuf.toString().trim());
+                    BigDecimal amount = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
                     boolean isCrossCurrency = sourceAccount.getCurrency() != resolvedDestAcc.getCurrency();
 
                     LiveCurrencyService liveCurrencyService = ControllerFactory.getLiveCurrencyService();
@@ -421,51 +567,75 @@ public class TransferScreen implements Screen {
                             ? CurrencyConverter.getExchangeRate(sourceAccount.getCurrency().name(), resolvedDestAcc.getCurrency().name(), rates)
                             : BigDecimal.ONE;
 
-                    String debitSymbol = getCurrencySymbol(sourceAccount.getCurrency());
-                    String creditSymbol = getCurrencySymbol(resolvedDestAcc.getCurrency());
+                    BigDecimal remainingBalance = sourceAccount.getBalance().subtract(amount);
 
                     StringBuilder sb = new StringBuilder();
                     sb.append(TUIBox.top(width)).append("\n");
-                    String header = isCrossCurrency
-                            ? "DIGIBANK CORE > MONEY MOVEMENT > CONFIRM CROSS-CURRENCY TRANSFER"
-                            : "DIGIBANK CORE > MONEY MOVEMENT > CONFIRM TRANSFER";
-                    sb.append(TUIBox.line(ConsoleTheme.primary(header), width)).append("\n");
+                    sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > MONEY MOVEMENT > CONFIRM TRANSFER"), width)).append("\n");
                     sb.append(TUIBox.divider(width)).append("\n");
-
-                    sb.append(TUIBox.line(String.format("  Source Account       : %s (%s - %s)",
-                            sourceAccount.getAccountNumber(), sourceAccount.getAccountType(), sourceAccount.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Destination Account  : %s (%s - %s)",
-                            resolvedDestAcc.getAccountNumber(), resolvedDestAcc.getAccountType(), resolvedDestAcc.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Beneficiary Name     : %s", resolvedBeneficiaryName), width)).append("\n");
+                    sb.append(TUIBox.line("TRANSACTION VERIFICATION", width)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
-                    String debitFormatted = String.format("%s %s %s", debitSymbol, df.format(amount), sourceAccount.getCurrency());
-                    sb.append(TUIBox.line(String.format("  Debit Amount         : %s", debitFormatted), width)).append("\n");
+                    sb.append(TUIBox.line(String.format("  Source Account    : %s (%s - %s)",
+                            sourceAccount.getAccountNumber(), sourceAccount.getAccountType(), sourceAccount.getCurrency()), width)).append("\n");
+                    sb.append(TUIBox.line(String.format("  Available Balance : $ %s %s",
+                            df.format(sourceAccount.getBalance()), sourceAccount.getCurrency()), width)).append("\n");
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
+
+                    sb.append(TUIBox.line(String.format("  Destination Acc   : %s (%s - %s)",
+                            resolvedDestAcc.getAccountNumber(), resolvedDestAcc.getAccountType(), resolvedDestAcc.getCurrency()), width)).append("\n");
+                    sb.append(TUIBox.line(String.format("  Beneficiary Name  : %s", resolvedBeneficiaryName), width)).append("\n");
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
+
+                    sb.append(TUIBox.line(String.format("  Transfer Amount   : $  %s %s",
+                            df.format(amount), sourceAccount.getCurrency()), width)).append("\n");
+                    sb.append(TUIBox.line(String.format("  Transfer Fee      : $      0.00 %s (Internal DigiBank Transfer)",
+                            sourceAccount.getCurrency()), width)).append("\n");
+                    sb.append(TUIBox.line(String.format("  Remaining Balance : $ %s %s",
+                            df.format(remainingBalance), sourceAccount.getCurrency()), width)).append("\n");
 
                     if (isCrossCurrency) {
                         String rateFormatted = String.format("1 %s = %s %s",
                                 sourceAccount.getCurrency(),
                                 df.format(exchangeRate),
                                 resolvedDestAcc.getCurrency());
-                        String receiveFormatted = String.format("%s %s %s", creditSymbol, df.format(creditAmount), resolvedDestAcc.getCurrency());
-                        sb.append(TUIBox.line(String.format("  Live Exchange Rate   : %s", rateFormatted), width)).append("\n");
-                        sb.append(TUIBox.line(String.format("  Recipient Receives   : %s", receiveFormatted), width)).append("\n");
+                        String receiveFormatted = String.format("%s %s %s",
+                                getCurrencySymbol(resolvedDestAcc.getCurrency()),
+                                df.format(creditAmount),
+                                resolvedDestAcc.getCurrency());
+                        sb.append(TUIBox.line(String.format("  Live Exchange Rate: %s", rateFormatted), width)).append("\n");
+                        sb.append(TUIBox.line(String.format("  Recipient Receives: %s", receiveFormatted), width)).append("\n");
                     }
 
-                    sb.append(TUIBox.line(String.format("  Transfer Fee         : %s 0.00 %s", debitSymbol, sourceAccount.getCurrency()), width)).append("\n");
                     String catName = TRANSFER_CATEGORIES[selectedCategoryIdx];
-                    sb.append(TUIBox.line(String.format("  Category / Memo      : %s / \"%s\"", catName, remarkBuf.toString()), width)).append("\n");
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    sb.append(TUIBox.line("  Select Action:", width)).append("\n");
+                    String memoStr = remarkBuf.toString();
+                    int maxMemoLen = width - 4 - 24 - catName.length() - 4;
+                    if (maxMemoLen > 3 && memoStr.length() > maxMemoLen) {
+                        memoStr = memoStr.substring(0, maxMemoLen - 3) + "...";
+                    }
+                    String catMemo = String.format("  Category / Memo   : %s / \"%s\"", catName, memoStr);
+                    if (catMemo.length() > width - 4) {
+                        catMemo = catMemo.substring(0, width - 4);
+                    }
+                    sb.append(TUIBox.line(catMemo, width)).append("\n");
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
 
-                    String a1 = confirmActionIdx == 0 ? "  ▸ " + ConsoleTheme.highlight("[1] Confirm & Execute Transfer") : "    [1] Confirm & Execute Transfer";
-                    String a2 = confirmActionIdx == 1 ? "  ▸ " + ConsoleTheme.highlight("[2] Cancel and Return") : "    [2] Cancel and Return";
-                    sb.append(TUIBox.line(a1, width)).append("\n");
-                    sb.append(TUIBox.line(a2, width)).append("\n");
-
                     sb.append(TUIBox.divider(width)).append("\n");
+                    sb.append(TUIBox.line("  CONFIRM EXECUTION", width)).append("\n");
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
+
+                    String a1 = "[1] Authorize & Send Transfer";
+                    String a2 = "[2] Back to Edit Details";
+                    String confirmLine;
+                    if (confirmActionIdx == 0) {
+                        confirmLine = "  ▸ " + ConsoleTheme.highlight(a1) + "                 " + a2;
+                    } else {
+                        confirmLine = "    " + a1 + "               ▸ " + ConsoleTheme.highlight(a2);
+                    }
+                    sb.append(TUIBox.line(confirmLine, width)).append("\n");
+
                     sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [↑/↓] Move Highlight  •  [Enter] Confirm  •  [1/2] Instant Action  •  [Esc] Back")).append("\n");
+                    sb.append(ConsoleTheme.muted(" [Enter] Confirm Action  •  [1/2] Instant Action  •  [Esc] Back to Edit")).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -473,8 +643,11 @@ public class TransferScreen implements Screen {
                     KeyEvent event = TUIFormHelper.readKey(reader);
                     if (event.action() == KeyAction.ESCAPE) {
                         state = ScreenState.FORM;
+                        focusedField = 4;
                         firstRender = true;
-                    } else if (event.action() == KeyAction.UP || event.action() == KeyAction.DOWN) {
+                    } else if (event.action() == KeyAction.UP || event.action() == KeyAction.DOWN
+                            || event.action() == KeyAction.LEFT || event.action() == KeyAction.RIGHT
+                            || event.action() == KeyAction.TAB) {
                         confirmActionIdx = (confirmActionIdx == 0) ? 1 : 0;
                     } else if (event.action() == KeyAction.ENTER) {
                         if (confirmActionIdx == 0) {
@@ -484,6 +657,7 @@ public class TransferScreen implements Screen {
                             return;
                         } else {
                             state = ScreenState.FORM;
+                            focusedField = 4;
                             firstRender = true;
                         }
                     } else if (event.ch() == '1') {
@@ -493,6 +667,7 @@ public class TransferScreen implements Screen {
                         return;
                     } else if (event.ch() == '2') {
                         state = ScreenState.FORM;
+                        focusedField = 4;
                         firstRender = true;
                     }
                 }

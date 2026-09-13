@@ -27,7 +27,8 @@ import java.util.List;
 
 /**
  * Screen for withdrawing cash/funds from a user's bank account.
- * Strict 82-column enclosed container, dedicated status slot, and pure keyboard navigation.
+ * Strict 82-column enclosed container, dedicated status slot, action compartment,
+ * real-time amount formatting, and seamless keyboard navigation.
  */
 public class WithdrawScreen implements Screen {
     private final AccountController accountController;
@@ -170,19 +171,23 @@ public class WithdrawScreen implements Screen {
 
         DecimalFormat df = new DecimalFormat("#,##0.00");
 
-        // Form state
-        int focusedField = 0; // 0: Withdrawal Amount, 1: Remark, 2: Expense Category
+        // Form state:
+        // 0: Withdrawal Amount
+        // 1: Remark (Optional)
+        // 2: Expense Category
+        // 3: [1] Authorize & Dispense Cash
+        // 4: [2] Cancel & Return
+        int focusedField = 0;
         StringBuilder amountBuf = new StringBuilder();
         StringBuilder remarkBuf = new StringBuilder();
-        int selectedCategoryIdx = 0;
-        boolean categoryChosen = false;
+        int selectedCategoryIdx = 4; // Default to Entertainment matching mockup or 0
+        boolean categoryChosen = true;
         String statusMessage = null;
         boolean isError = false;
 
-        enum ScreenState { FORM, CATEGORY_SELECT, CONFIRMATION, COMPLETED }
+        enum ScreenState { FORM, CATEGORY_SELECT }
         ScreenState state = ScreenState.FORM;
-        int categoryHighlightIdx = 0;
-        int confirmActionIdx = 0; // 0: Confirm, 1: Cancel
+        int categoryHighlightIdx = selectedCategoryIdx;
 
         Terminal terminal = session.getTerminal();
         Attributes origAttr = terminal.enterRawMode();
@@ -207,24 +212,54 @@ public class WithdrawScreen implements Screen {
                     sb.append(TUIFormHelper.formatInfoRow("Available Balance", balanceStr, 18, 50)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
-                    sb.append(TUIFormHelper.formatFieldRow("Withdrawal Amount", amountBuf.toString(), focusedField == 0, 18, 50)).append("\n");
+                    String amountDisplay;
+                    if (focusedField == 0) {
+                        amountDisplay = amountBuf.toString().isEmpty() ? "" : amountBuf.toString();
+                    } else {
+                        if (amountBuf.length() > 0) {
+                            try {
+                                BigDecimal amt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
+                                amountDisplay = "$ " + df.format(amt);
+                            } catch (Exception e) {
+                                amountDisplay = amountBuf.toString();
+                            }
+                        } else {
+                            amountDisplay = "";
+                        }
+                    }
+                    sb.append(TUIFormHelper.formatFieldRow("Withdrawal Amount", amountDisplay, focusedField == 0, 18, 50)).append("\n");
                     sb.append(TUIFormHelper.formatFieldRow("Remark (Optional)", remarkBuf.toString(), focusedField == 1, 18, 50)).append("\n");
 
-                    String catDisplay = categoryChosen
-                            ? String.format("(%d) %s", selectedCategoryIdx, categoryLabels.get(selectedCategoryIdx))
-                            : "Press [Enter] to choose category";
+                    String catDisplay = String.format("(%d) %s", selectedCategoryIdx, categoryLabels.get(selectedCategoryIdx));
                     sb.append(TUIFormHelper.formatFieldRow("Expense Category", catDisplay, focusedField == 2, 18, 50)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
+                    // ACTION Compartment
+                    sb.append(TUIBox.divider(width)).append("\n");
+                    sb.append(TUIBox.line("  ACTION", width)).append("\n");
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
+
+                    String btn1 = "[1] Authorize & Dispense Cash";
+                    String btn2 = "[2] Cancel & Return";
+                    String actionLine;
+                    if (focusedField == 3) {
+                        actionLine = "  ▸ " + ConsoleTheme.highlight(btn1) + "                 " + btn2;
+                    } else if (focusedField == 4) {
+                        actionLine = "    " + btn1 + "               ▸ " + ConsoleTheme.highlight(btn2);
+                    } else {
+                        actionLine = "  ▸ " + btn1 + "                 " + btn2;
+                    }
+                    sb.append(TUIBox.line(actionLine, width)).append("\n");
+
+                    // Status Bar
                     sb.append(TUIBox.divider(width)).append("\n");
                     String statusText = (statusMessage != null)
                             ? (isError ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage))
                             : "Ready";
                     sb.append(TUIBox.line("Status: " + statusText, width)).append("\n");
 
-                    sb.append(TUIBox.divider(width)).append("\n");
                     sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Enter] Select / Edit  •  [Esc] Cancel")).append("\n");
+                    sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Enter] Confirm / Action  •  [1/2] Action  •  [Esc] Cancel")).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -235,11 +270,20 @@ public class WithdrawScreen implements Screen {
                         navigator.pop();
                         return;
                     } else if (event.action() == KeyAction.TAB || event.action() == KeyAction.DOWN) {
-                        focusedField = (focusedField + 1) % 3;
+                        focusedField = (focusedField + 1) % 5;
                     } else if (event.action() == KeyAction.SHIFT_TAB || event.action() == KeyAction.UP) {
-                        focusedField = (focusedField - 1 + 3) % 3;
+                        focusedField = (focusedField - 1 + 5) % 5;
+                    } else if (event.action() == KeyAction.LEFT) {
+                        if (focusedField == 4) {
+                            focusedField = 3;
+                        }
+                    } else if (event.action() == KeyAction.RIGHT) {
+                        if (focusedField == 3) {
+                            focusedField = 4;
+                        }
                     } else if (event.action() == KeyAction.BACKSPACE) {
                         statusMessage = null;
+                        isError = false;
                         if (focusedField == 0 && amountBuf.length() > 0) {
                             amountBuf.deleteCharAt(amountBuf.length() - 1);
                         } else if (focusedField == 1 && remarkBuf.length() > 0) {
@@ -247,10 +291,11 @@ public class WithdrawScreen implements Screen {
                         }
                     } else if (event.action() == KeyAction.ENTER) {
                         statusMessage = null;
+                        isError = false;
                         if (focusedField == 0) {
                             if (amountBuf.length() > 0) {
                                 try {
-                                    BigDecimal testAmt = new BigDecimal(amountBuf.toString().trim());
+                                    BigDecimal testAmt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
                                     if (testAmt.compareTo(BigDecimal.ZERO) <= 0) {
                                         statusMessage = "Amount must be greater than zero.";
                                         isError = true;
@@ -278,10 +323,22 @@ public class WithdrawScreen implements Screen {
                             state = ScreenState.CATEGORY_SELECT;
                             categoryHighlightIdx = selectedCategoryIdx;
                             firstRender = true;
+                        } else if (focusedField == 3) {
+                            // [1] Authorize & Dispense Cash
+                            if (handleWithdrawAction(navigator, terminal, origAttr, reader, sourceAccount,
+                                    amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, df, width)) {
+                                return;
+                            }
+                        } else if (focusedField == 4) {
+                            // [2] Cancel & Return
+                            terminal.setAttributes(origAttr);
+                            navigator.pop();
+                            return;
                         }
                     } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
                         char c = event.ch();
                         statusMessage = null;
+                        isError = false;
                         if (focusedField == 0) {
                             if ((c >= '0' && c <= '9') || (c == '.' && !amountBuf.toString().contains("."))) {
                                 if (amountBuf.length() < 12) {
@@ -292,32 +349,19 @@ public class WithdrawScreen implements Screen {
                             if (remarkBuf.length() < 40) {
                                 remarkBuf.append(c);
                             }
-                        }
-                    }
-
-                    // If user is on category and has already chosen (or presses Enter with valid inputs)
-                    if (focusedField == 2 && categoryChosen && event.action() == KeyAction.ENTER && state == ScreenState.FORM) {
-                        String amtStr = amountBuf.toString().trim();
-                        try {
-                            BigDecimal amt = new BigDecimal(amtStr);
-                            if (amt.compareTo(BigDecimal.ZERO) <= 0) {
-                                statusMessage = "Amount must be greater than zero.";
-                                isError = true;
-                            } else if (sourceAccount.getBalance().compareTo(amt) < 0) {
-                                statusMessage = "Insufficient available balance.";
-                                isError = true;
-                            } else {
-                                if (remarkBuf.toString().trim().isEmpty()) {
-                                    remarkBuf.setLength(0);
-                                    remarkBuf.append("Cash Withdrawal");
+                        } else if (focusedField >= 2) {
+                            if (c == '1') {
+                                // Numeric hotkey 1: Authorize & Dispense Cash
+                                if (handleWithdrawAction(navigator, terminal, origAttr, reader, sourceAccount,
+                                        amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, df, width)) {
+                                    return;
                                 }
-                                state = ScreenState.CONFIRMATION;
-                                confirmActionIdx = 0;
-                                firstRender = true;
+                            } else if (c == '2') {
+                                // Numeric hotkey 2: Cancel & Return
+                                terminal.setAttributes(origAttr);
+                                navigator.pop();
+                                return;
                             }
-                        } catch (Exception e) {
-                            statusMessage = "Invalid withdrawal amount format";
-                            isError = true;
                         }
                     }
 
@@ -359,66 +403,13 @@ public class WithdrawScreen implements Screen {
                         selectedCategoryIdx = categoryHighlightIdx;
                         categoryChosen = true;
                         state = ScreenState.FORM;
+                        focusedField = 3; // Shift focus to [1] Authorize & Dispense Cash
                         firstRender = true;
                     } else if (event.action() == KeyAction.DIGIT && event.ch() >= '0' && event.ch() <= '8') {
                         selectedCategoryIdx = event.ch() - '0';
                         categoryChosen = true;
                         state = ScreenState.FORM;
-                        firstRender = true;
-                    }
-
-                } else if (state == ScreenState.CONFIRMATION) {
-                    BigDecimal amount = new BigDecimal(amountBuf.toString().trim());
-                    BigDecimal remBal = sourceAccount.getBalance().subtract(amount);
-
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(TUIBox.top(width)).append("\n");
-                    sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > CONFIRM WITHDRAWAL"), width)).append("\n");
-                    sb.append(TUIBox.divider(width)).append("\n");
-
-                    sb.append(TUIBox.line(String.format("  Source Account    : %s (%s - %s)",
-                            sourceAccount.getAccountNumber(), sourceAccount.getAccountType(), sourceAccount.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Current Balance   : $ %s %s", df.format(sourceAccount.getBalance()), sourceAccount.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Withdrawal Amount : $ %s %s", df.format(amount), sourceAccount.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Remaining Balance : $ %s %s", df.format(remBal), sourceAccount.getCurrency()), width)).append("\n");
-                    String catName = categoryLabels.get(selectedCategoryIdx);
-                    sb.append(TUIBox.line(String.format("  Category / Memo   : %s / \"%s\"", catName, remarkBuf.toString()), width)).append("\n");
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    sb.append(TUIBox.line("  Select Action:", width)).append("\n");
-
-                    String a1 = confirmActionIdx == 0 ? "  ▸ " + ConsoleTheme.highlight("[1] Confirm & Dispense Cash") : "    [1] Confirm & Dispense Cash";
-                    String a2 = confirmActionIdx == 1 ? "  ▸ " + ConsoleTheme.highlight("[2] Cancel and Return") : "    [2] Cancel and Return";
-                    sb.append(TUIBox.line(a1, width)).append("\n");
-                    sb.append(TUIBox.line(a2, width)).append("\n");
-
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [↑/↓] Move Highlight  •  [Enter] Confirm  •  [1/2] Instant Action  •  [Esc] Back")).append("\n");
-
-                    ScreenRenderer.render(sb.toString(), firstRender);
-                    firstRender = false;
-
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE) {
-                        state = ScreenState.FORM;
-                        firstRender = true;
-                    } else if (event.action() == KeyAction.UP || event.action() == KeyAction.DOWN) {
-                        confirmActionIdx = (confirmActionIdx == 0) ? 1 : 0;
-                    } else if (event.action() == KeyAction.ENTER) {
-                        if (confirmActionIdx == 0) {
-                            executeWithdrawal(navigator, terminal, origAttr, reader, sourceAccount, amount,
-                                    selectedCategoryIdx, dbCategories, remarkBuf.toString(), width);
-                            return;
-                        } else {
-                            state = ScreenState.FORM;
-                            firstRender = true;
-                        }
-                    } else if (event.ch() == '1') {
-                        executeWithdrawal(navigator, terminal, origAttr, reader, sourceAccount, amount,
-                                selectedCategoryIdx, dbCategories, remarkBuf.toString(), width);
-                        return;
-                    } else if (event.ch() == '2') {
-                        state = ScreenState.FORM;
+                        focusedField = 3; // Shift focus to [1] Authorize & Dispense Cash
                         firstRender = true;
                     }
                 }
@@ -432,6 +423,39 @@ public class WithdrawScreen implements Screen {
         }
     }
 
+    private boolean handleWithdrawAction(ScreenNavigator navigator, Terminal terminal, Attributes origAttr,
+                                         NonBlockingReader reader, AccountDTO sourceAccount,
+                                         StringBuilder amountBuf, StringBuilder remarkBuf,
+                                         int selectedCategoryIdx, List<Category> dbCategories,
+                                         DecimalFormat df, int width) {
+        String amtStr = amountBuf.toString().replace(",", "").replace("$", "").trim();
+        if (amtStr.isEmpty()) {
+            return false;
+        }
+
+        BigDecimal amt;
+        try {
+            amt = new BigDecimal(amtStr);
+            if (amt.compareTo(BigDecimal.ZERO) <= 0) {
+                return false;
+            }
+            if (sourceAccount.getBalance().compareTo(amt) < 0) {
+                return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+
+        String remark = remarkBuf.toString().trim();
+        if (remark.isEmpty()) {
+            remark = "Cash Withdrawal";
+        }
+
+        executeWithdrawal(navigator, terminal, origAttr, reader, sourceAccount, amt,
+                selectedCategoryIdx, dbCategories, remark, width);
+        return true;
+    }
+
     private void executeWithdrawal(ScreenNavigator navigator, Terminal terminal, Attributes origAttr,
                                    NonBlockingReader reader, AccountDTO sourceAccount, BigDecimal amount,
                                    int selectedCategoryIdx, List<Category> dbCategories, String remark, int width) {
@@ -441,6 +465,7 @@ public class WithdrawScreen implements Screen {
             catId = dbCategories.get(selectedCategoryIdx - 1).getCategoryId();
         }
 
+        DecimalFormat df = new DecimalFormat("#,##0.00");
         try {
             Transaction txn = accountController.withdraw(
                     sourceAccount.getAccountId(),
@@ -451,15 +476,18 @@ public class WithdrawScreen implements Screen {
                     userEntity
             );
 
+            BigDecimal newBal = sourceAccount.getBalance().subtract(amount);
+
             StringBuilder compSb = new StringBuilder();
             compSb.append(TUIBox.top(width)).append("\n");
-            compSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > WITHDRAWAL COMPLETED"), width)).append("\n");
+            compSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > WITHDRAWAL COMPLETED"), width)).append("\n");
             compSb.append(TUIBox.divider(width)).append("\n");
             compSb.append(TUIBox.emptyLine(width)).append("\n");
-            compSb.append(TUIBox.center(ConsoleTheme.success("✔ Withdrawal processed successfully!"), width)).append("\n");
+            compSb.append(TUIBox.center(ConsoleTheme.success("✔ Cash dispensed successfully!"), width)).append("\n");
             compSb.append(TUIBox.emptyLine(width)).append("\n");
             compSb.append(TUIBox.line("  Transaction ID:  #" + txn.getTransactionId(), width)).append("\n");
-            compSb.append(TUIBox.line("  Debited:         " + ConsoleTheme.error("-" + ConsoleFormatter.formatCurrency(amount) + " " + sourceAccount.getCurrency()), width)).append("\n");
+            compSb.append(TUIBox.line("  Debited:         " + ConsoleTheme.error("-$ " + df.format(amount) + " " + sourceAccount.getCurrency()), width)).append("\n");
+            compSb.append(TUIBox.line("  New Balance:     $ " + df.format(newBal) + " " + sourceAccount.getCurrency(), width)).append("\n");
             compSb.append(TUIBox.emptyLine(width)).append("\n");
             compSb.append(TUIBox.divider(width)).append("\n");
             compSb.append(TUIBox.bottom(width)).append("\n");

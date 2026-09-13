@@ -26,7 +26,8 @@ import java.util.List;
 
 /**
  * Screen for depositing funds into a user's bank account.
- * Strict 82-column enclosed container, in-place editing, and zero trailing prompts.
+ * Strict 82-column enclosed container, dedicated status slot, action compartment,
+ * real-time amount formatting, and seamless keyboard navigation.
  */
 public class DepositScreen implements Screen {
     private final AccountController accountController;
@@ -169,18 +170,23 @@ public class DepositScreen implements Screen {
 
         DecimalFormat df = new DecimalFormat("#,##0.00");
 
-        // Form state
-        int focusedField = 0; // 0: Amount, 1: Remark, 2: Category, 3: Submit Button
+        // Form state:
+        // 0: Deposit Amount
+        // 1: Remark (Optional)
+        // 2: Category
+        // 3: [1] Authorize & Accept Deposit
+        // 4: [2] Cancel & Return
+        int focusedField = 0;
         StringBuilder amountBuf = new StringBuilder();
         StringBuilder remarkBuf = new StringBuilder();
         int selectedCategoryIdx = 0;
-        boolean categoryChosen = false;
+        boolean categoryChosen = true;
         String statusMessage = null;
+        boolean isError = false;
 
-        enum ScreenState { FORM, CATEGORY_SELECT, CONFIRMATION, COMPLETED }
+        enum ScreenState { FORM, CATEGORY_SELECT }
         ScreenState state = ScreenState.FORM;
         int categoryHighlightIdx = 0;
-        int confirmActionIdx = 0; // 0: Confirm, 1: Cancel
 
         Terminal terminal = session.getTerminal();
         Attributes origAttr = terminal.enterRawMode();
@@ -205,22 +211,54 @@ public class DepositScreen implements Screen {
                     sb.append(TUIFormHelper.formatInfoRow("Current Balance", balanceStr, 18, 50)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
-                    sb.append(TUIFormHelper.formatFieldRow("Deposit Amount", amountBuf.toString(), focusedField == 0, 18, 50)).append("\n");
+                    String amountDisplay;
+                    if (focusedField == 0) {
+                        amountDisplay = amountBuf.toString().isEmpty() ? "" : amountBuf.toString();
+                    } else {
+                        if (amountBuf.length() > 0) {
+                            try {
+                                BigDecimal amt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
+                                amountDisplay = "$ " + df.format(amt);
+                            } catch (Exception e) {
+                                amountDisplay = amountBuf.toString();
+                            }
+                        } else {
+                            amountDisplay = "";
+                        }
+                    }
+                    sb.append(TUIFormHelper.formatFieldRow("Deposit Amount", amountDisplay, focusedField == 0, 18, 50)).append("\n");
                     sb.append(TUIFormHelper.formatFieldRow("Remark (Optional)", remarkBuf.toString(), focusedField == 1, 18, 50)).append("\n");
 
-                    String catDisplay = categoryChosen
-                            ? String.format("(%d) %s", selectedCategoryIdx, categoryLabels.get(selectedCategoryIdx))
-                            : "Press [Enter] to choose category";
+                    String catDisplay = String.format("(%d) %s", selectedCategoryIdx, categoryLabels.get(selectedCategoryIdx));
                     sb.append(TUIFormHelper.formatFieldRow("Category", catDisplay, focusedField == 2, 18, 50)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
-                    if (statusMessage != null) {
-                        sb.append(TUIBox.line(ConsoleTheme.error(" Status: " + statusMessage), width)).append("\n");
-                    }
-
+                    // ACTION Compartment
                     sb.append(TUIBox.divider(width)).append("\n");
+                    sb.append(TUIBox.line("  ACTION", width)).append("\n");
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
+
+                    String btn1 = "[1] Authorize & Accept Deposit";
+                    String btn2 = "[2] Cancel & Return";
+                    String actionLine;
+                    if (focusedField == 3) {
+                        actionLine = "  ▸ " + ConsoleTheme.highlight(btn1) + "                 " + btn2;
+                    } else if (focusedField == 4) {
+                        actionLine = "    " + btn1 + "               ▸ " + ConsoleTheme.highlight(btn2);
+                    } else {
+                        actionLine = "  ▸ " + btn1 + "                 " + btn2;
+                    }
+                    sb.append(TUIBox.line(actionLine, width)).append("\n");
+
+                    // Status Bar
+                    sb.append(TUIBox.divider(width)).append("\n");
+                    String statusText = (statusMessage != null)
+                            ? (isError ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage))
+                            : "Ready";
+                    sb.append(TUIBox.line("Status: " + statusText, width)).append("\n");
+
                     sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Enter] Edit / Select  •  [Esc] Cancel")).append("\n");
+                    sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Enter] Confirm / Action  •  [1/2] Action  •  [Esc] Cancel")).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -231,21 +269,45 @@ public class DepositScreen implements Screen {
                         navigator.pop();
                         return;
                     } else if (event.action() == KeyAction.TAB || event.action() == KeyAction.DOWN) {
-                        focusedField = (focusedField + 1) % 3;
+                        focusedField = (focusedField + 1) % 5;
                     } else if (event.action() == KeyAction.SHIFT_TAB || event.action() == KeyAction.UP) {
-                        focusedField = (focusedField - 1 + 3) % 3;
+                        focusedField = (focusedField - 1 + 5) % 5;
+                    } else if (event.action() == KeyAction.LEFT) {
+                        if (focusedField == 4) {
+                            focusedField = 3;
+                        }
+                    } else if (event.action() == KeyAction.RIGHT) {
+                        if (focusedField == 3) {
+                            focusedField = 4;
+                        }
                     } else if (event.action() == KeyAction.BACKSPACE) {
+                        statusMessage = null;
+                        isError = false;
                         if (focusedField == 0 && amountBuf.length() > 0) {
                             amountBuf.deleteCharAt(amountBuf.length() - 1);
                         } else if (focusedField == 1 && remarkBuf.length() > 0) {
                             remarkBuf.deleteCharAt(remarkBuf.length() - 1);
                         }
                     } else if (event.action() == KeyAction.ENTER) {
+                        statusMessage = null;
+                        isError = false;
                         if (focusedField == 0) {
                             if (amountBuf.length() > 0) {
-                                focusedField = 1;
+                                try {
+                                    BigDecimal testAmt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
+                                    if (testAmt.compareTo(BigDecimal.ZERO) <= 0) {
+                                        statusMessage = "Amount must be greater than zero.";
+                                        isError = true;
+                                    } else {
+                                        focusedField = 1;
+                                    }
+                                } catch (Exception e) {
+                                    statusMessage = "Invalid numeric amount format.";
+                                    isError = true;
+                                }
                             } else {
-                                statusMessage = "Please enter deposit amount";
+                                statusMessage = "Please enter deposit amount.";
+                                isError = true;
                             }
                         } else if (focusedField == 1) {
                             if (remarkBuf.toString().trim().isEmpty()) {
@@ -257,10 +319,22 @@ public class DepositScreen implements Screen {
                             state = ScreenState.CATEGORY_SELECT;
                             categoryHighlightIdx = selectedCategoryIdx;
                             firstRender = true;
+                        } else if (focusedField == 3) {
+                            // [1] Authorize & Accept Deposit
+                            if (handleDepositAction(navigator, terminal, origAttr, reader, targetAccount,
+                                    amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, df, width)) {
+                                return;
+                            }
+                        } else if (focusedField == 4) {
+                            // [2] Cancel & Return
+                            terminal.setAttributes(origAttr);
+                            navigator.pop();
+                            return;
                         }
                     } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
                         char c = event.ch();
                         statusMessage = null;
+                        isError = false;
                         if (focusedField == 0) {
                             if ((c >= '0' && c <= '9') || (c == '.' && !amountBuf.toString().contains("."))) {
                                 if (amountBuf.length() < 12) {
@@ -271,27 +345,19 @@ public class DepositScreen implements Screen {
                             if (remarkBuf.length() < 40) {
                                 remarkBuf.append(c);
                             }
-                        }
-                    }
-
-                    // If user has filled amount and category, or presses enter on Category when chosen
-                    if (focusedField == 2 && categoryChosen && event.action() == KeyAction.ENTER) {
-                        String amtStr = amountBuf.toString().trim();
-                        try {
-                            BigDecimal amt = new BigDecimal(amtStr);
-                            if (amt.compareTo(BigDecimal.ZERO) <= 0) {
-                                statusMessage = "Amount must be greater than zero.";
-                            } else {
-                                if (remarkBuf.toString().trim().isEmpty()) {
-                                    remarkBuf.setLength(0);
-                                    remarkBuf.append("Cash Deposit");
+                        } else if (focusedField >= 2) {
+                            if (c == '1') {
+                                // Instant hotkey 1: Authorize & Accept Deposit
+                                if (handleDepositAction(navigator, terminal, origAttr, reader, targetAccount,
+                                        amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, df, width)) {
+                                    return;
                                 }
-                                state = ScreenState.CONFIRMATION;
-                                confirmActionIdx = 0;
-                                firstRender = true;
+                            } else if (c == '2') {
+                                // Instant hotkey 2: Cancel & Return
+                                terminal.setAttributes(origAttr);
+                                navigator.pop();
+                                return;
                             }
-                        } catch (Exception e) {
-                            statusMessage = "Invalid numeric deposit amount";
                         }
                     }
 
@@ -333,146 +399,13 @@ public class DepositScreen implements Screen {
                         selectedCategoryIdx = categoryHighlightIdx;
                         categoryChosen = true;
                         state = ScreenState.FORM;
+                        focusedField = 3; // Shift focus to [1] Authorize & Accept Deposit
                         firstRender = true;
                     } else if (event.action() == KeyAction.DIGIT && event.ch() >= '0' && event.ch() <= '8') {
                         selectedCategoryIdx = event.ch() - '0';
                         categoryChosen = true;
                         state = ScreenState.FORM;
-                        firstRender = true;
-                    }
-
-                } else if (state == ScreenState.CONFIRMATION) {
-                    BigDecimal amount = new BigDecimal(amountBuf.toString().trim());
-                    BigDecimal newBal = targetAccount.getBalance().add(amount);
-
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(TUIBox.top(width)).append("\n");
-                    sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > CONFIRM DEPOSIT"), width)).append("\n");
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Target Account    : %s (%s - %s)", targetAccount.getAccountNumber(), targetAccount.getAccountType(), targetAccount.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Current Balance   : $ %s %s", df.format(targetAccount.getBalance()), targetAccount.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Deposit Amount    : $ %s %s", df.format(amount), targetAccount.getCurrency()), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  New Balance       : $ %s %s", df.format(newBal), targetAccount.getCurrency()), width)).append("\n");
-                    String catName = categoryLabels.get(selectedCategoryIdx);
-                    sb.append(TUIBox.line(String.format("  Category / Memo   : %s / \"%s\"", catName, remarkBuf.toString()), width)).append("\n");
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    sb.append(TUIBox.line("  Select Action:", width)).append("\n");
-
-                    String a1 = confirmActionIdx == 0 ? "  ▸ " + ConsoleTheme.highlight("[1] Confirm & Execute Deposit") : "    [1] Confirm & Execute Deposit";
-                    String a2 = confirmActionIdx == 1 ? "  ▸ " + ConsoleTheme.highlight("[2] Cancel and Return") : "    [2] Cancel and Return";
-                    sb.append(TUIBox.line(a1, width)).append("\n");
-                    sb.append(TUIBox.line(a2, width)).append("\n");
-
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [↑/↓] Move Highlight  •  [Enter] Confirm  •  [1/2] Instant Action  •  [Esc] Back")).append("\n");
-
-                    ScreenRenderer.render(sb.toString(), firstRender);
-                    firstRender = false;
-
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE) {
-                        state = ScreenState.FORM;
-                        firstRender = true;
-                    } else if (event.action() == KeyAction.UP || event.action() == KeyAction.DOWN) {
-                        confirmActionIdx = (confirmActionIdx == 0) ? 1 : 0;
-                    } else if (event.action() == KeyAction.ENTER) {
-                        if (confirmActionIdx == 0) {
-                            // Execute Deposit
-                            Long catId = null;
-                            if (selectedCategoryIdx > 0 && selectedCategoryIdx - 1 < dbCategories.size()) {
-                                catId = dbCategories.get(selectedCategoryIdx - 1).getCategoryId();
-                            }
-                            try {
-                                Transaction txn = accountController.deposit(
-                                        targetAccount.getAccountId(),
-                                        amount,
-                                        targetAccount.getCurrency(),
-                                        remarkBuf.toString(),
-                                        catId,
-                                        userEntity
-                                );
-                                state = ScreenState.COMPLETED;
-                                firstRender = true;
-
-                                StringBuilder succSb = new StringBuilder();
-                                succSb.append(TUIBox.top(width)).append("\n");
-                                succSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > DEPOSIT COMPLETED"), width)).append("\n");
-                                succSb.append(TUIBox.divider(width)).append("\n");
-                                succSb.append(TUIBox.emptyLine(width)).append("\n");
-                                succSb.append(TUIBox.center(ConsoleTheme.success("✔ Deposit completed successfully!"), width)).append("\n");
-                                succSb.append(TUIBox.emptyLine(width)).append("\n");
-                                succSb.append(TUIBox.line("  Transaction ID:  #" + txn.getTransactionId(), width)).append("\n");
-                                succSb.append(TUIBox.line("  Credited:        " + ConsoleTheme.success("+" + ConsoleFormatter.formatCurrency(amount) + " " + targetAccount.getCurrency()), width)).append("\n");
-                                succSb.append(TUIBox.emptyLine(width)).append("\n");
-                                succSb.append(TUIBox.divider(width)).append("\n");
-                                succSb.append(TUIBox.bottom(width)).append("\n");
-                                succSb.append(ConsoleTheme.muted(" [Enter] Return to Main Menu  •  [Esc] Back")).append("\n");
-
-                                ScreenRenderer.render(succSb.toString(), true);
-                                while (true) {
-                                    KeyEvent doneEvt = TUIFormHelper.readKey(reader);
-                                    if (doneEvt.action() == KeyAction.ENTER || doneEvt.action() == KeyAction.ESCAPE || doneEvt.ch() == 'b' || doneEvt.ch() == 'B') {
-                                        terminal.setAttributes(origAttr);
-                                        navigator.pop();
-                                        return;
-                                    }
-                                }
-                            } catch (Exception e) {
-                                statusMessage = "Deposit failed: " + e.getMessage();
-                                state = ScreenState.FORM;
-                                firstRender = true;
-                            }
-                        } else {
-                            state = ScreenState.FORM;
-                            firstRender = true;
-                        }
-                    } else if (event.ch() == '1') {
-                        confirmActionIdx = 0;
-                        // Trigger confirm immediately
-                        Long catId = null;
-                        if (selectedCategoryIdx > 0 && selectedCategoryIdx - 1 < dbCategories.size()) {
-                            catId = dbCategories.get(selectedCategoryIdx - 1).getCategoryId();
-                        }
-                        try {
-                            Transaction txn = accountController.deposit(
-                                    targetAccount.getAccountId(),
-                                    amount,
-                                    targetAccount.getCurrency(),
-                                    remarkBuf.toString(),
-                                    catId,
-                                    userEntity
-                            );
-                            StringBuilder succSb = new StringBuilder();
-                            succSb.append(TUIBox.top(width)).append("\n");
-                            succSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > DEPOSIT COMPLETED"), width)).append("\n");
-                            succSb.append(TUIBox.divider(width)).append("\n");
-                            succSb.append(TUIBox.emptyLine(width)).append("\n");
-                            succSb.append(TUIBox.center(ConsoleTheme.success("✔ Deposit completed successfully!"), width)).append("\n");
-                            succSb.append(TUIBox.emptyLine(width)).append("\n");
-                            succSb.append(TUIBox.line("  Transaction ID:  #" + txn.getTransactionId(), width)).append("\n");
-                            succSb.append(TUIBox.line("  Credited:        " + ConsoleTheme.success("+" + ConsoleFormatter.formatCurrency(amount) + " " + targetAccount.getCurrency()), width)).append("\n");
-                            succSb.append(TUIBox.emptyLine(width)).append("\n");
-                            succSb.append(TUIBox.divider(width)).append("\n");
-                            succSb.append(TUIBox.bottom(width)).append("\n");
-                            succSb.append(ConsoleTheme.muted(" [Enter] Return to Main Menu  •  [Esc] Back")).append("\n");
-
-                            ScreenRenderer.render(succSb.toString(), true);
-                            while (true) {
-                                KeyEvent doneEvt = TUIFormHelper.readKey(reader);
-                                if (doneEvt.action() == KeyAction.ENTER || doneEvt.action() == KeyAction.ESCAPE || doneEvt.ch() == 'b' || doneEvt.ch() == 'B') {
-                                    terminal.setAttributes(origAttr);
-                                    navigator.pop();
-                                    return;
-                                }
-                            }
-                        } catch (Exception e) {
-                            statusMessage = "Deposit failed: " + e.getMessage();
-                            state = ScreenState.FORM;
-                            firstRender = true;
-                        }
-                    } else if (event.ch() == '2') {
-                        state = ScreenState.FORM;
+                        focusedField = 3; // Shift focus to [1] Authorize & Accept Deposit
                         firstRender = true;
                     }
                 }
@@ -484,5 +417,107 @@ public class DepositScreen implements Screen {
         } finally {
             terminal.setAttributes(origAttr);
         }
+    }
+
+    private boolean handleDepositAction(ScreenNavigator navigator, Terminal terminal, Attributes origAttr,
+                                        NonBlockingReader reader, AccountDTO targetAccount,
+                                        StringBuilder amountBuf, StringBuilder remarkBuf,
+                                        int selectedCategoryIdx, List<Category> dbCategories,
+                                        DecimalFormat df, int width) {
+        String amtStr = amountBuf.toString().replace(",", "").replace("$", "").trim();
+        if (amtStr.isEmpty()) {
+            return false;
+        }
+
+        BigDecimal amt;
+        try {
+            amt = new BigDecimal(amtStr);
+            if (amt.compareTo(BigDecimal.ZERO) <= 0) {
+                return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+
+        String remark = remarkBuf.toString().trim();
+        if (remark.isEmpty()) {
+            remark = "Cash Deposit";
+        }
+
+        executeDeposit(navigator, terminal, origAttr, reader, targetAccount, amt,
+                selectedCategoryIdx, dbCategories, remark, width);
+        return true;
+    }
+
+    private void executeDeposit(ScreenNavigator navigator, Terminal terminal, Attributes origAttr,
+                                NonBlockingReader reader, AccountDTO targetAccount, BigDecimal amount,
+                                int selectedCategoryIdx, List<Category> dbCategories, String remark, int width) {
+        User userEntity = SessionManager.getCurrentUser();
+        Long catId = null;
+        if (selectedCategoryIdx > 0 && selectedCategoryIdx - 1 < dbCategories.size()) {
+            catId = dbCategories.get(selectedCategoryIdx - 1).getCategoryId();
+        }
+
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        try {
+            Transaction txn = accountController.deposit(
+                    targetAccount.getAccountId(),
+                    amount,
+                    targetAccount.getCurrency(),
+                    remark,
+                    catId,
+                    userEntity
+            );
+
+            BigDecimal newBal = targetAccount.getBalance().add(amount);
+
+            StringBuilder succSb = new StringBuilder();
+            succSb.append(TUIBox.top(width)).append("\n");
+            succSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > DEPOSIT COMPLETED"), width)).append("\n");
+            succSb.append(TUIBox.divider(width)).append("\n");
+            succSb.append(TUIBox.emptyLine(width)).append("\n");
+            succSb.append(TUIBox.center(ConsoleTheme.success("✔ Deposit completed successfully!"), width)).append("\n");
+            succSb.append(TUIBox.emptyLine(width)).append("\n");
+            succSb.append(TUIBox.line("  Transaction ID:  #" + txn.getTransactionId(), width)).append("\n");
+            succSb.append(TUIBox.line("  Credited:        " + ConsoleTheme.success("+$ " + df.format(amount) + " " + targetAccount.getCurrency()), width)).append("\n");
+            succSb.append(TUIBox.line("  New Balance:     $ " + df.format(newBal) + " " + targetAccount.getCurrency(), width)).append("\n");
+            succSb.append(TUIBox.emptyLine(width)).append("\n");
+            succSb.append(TUIBox.divider(width)).append("\n");
+            succSb.append(TUIBox.bottom(width)).append("\n");
+            succSb.append(ConsoleTheme.muted(" [Enter] Return to Main Menu  •  [Esc] Back")).append("\n");
+
+            ScreenRenderer.render(succSb.toString(), true);
+            while (true) {
+                KeyEvent doneEvt = TUIFormHelper.readKey(reader);
+                if (doneEvt.action() == KeyAction.ENTER || doneEvt.action() == KeyAction.ESCAPE || doneEvt.ch() == 'b' || doneEvt.ch() == 'B') {
+                    terminal.setAttributes(origAttr);
+                    navigator.pop();
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            renderErrorBox(navigator, terminal, origAttr, reader, "Deposit Failed: " + e.getMessage(), width);
+        }
+    }
+
+    private void renderErrorBox(ScreenNavigator navigator, Terminal terminal, Attributes origAttr,
+                                NonBlockingReader reader, String errorMsg, int width) {
+        try {
+            StringBuilder errSb = new StringBuilder();
+            errSb.append(TUIBox.top(width)).append("\n");
+            errSb.append(TUIBox.line(ConsoleTheme.error(" " + errorMsg), width)).append("\n");
+            errSb.append(TUIBox.divider(width)).append("\n");
+            errSb.append(TUIBox.bottom(width)).append("\n");
+            errSb.append(ConsoleTheme.muted(" [Enter/Esc] Return to Menu")).append("\n");
+            ScreenRenderer.render(errSb.toString(), true);
+            while (true) {
+                KeyEvent doneEvt = TUIFormHelper.readKey(reader);
+                if (doneEvt.action() == KeyAction.ENTER || doneEvt.action() == KeyAction.ESCAPE) {
+                    break;
+                }
+            }
+        } catch (Exception ignored) {}
+        terminal.setAttributes(origAttr);
+        navigator.pop();
     }
 }

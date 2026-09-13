@@ -292,5 +292,168 @@ public class ScreenVisualVerificationTest {
         assertEquals(82, TUIBox.visibleLength(noteRow), "Note row must be 82 cols");
         assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
     }
+
+    @Test
+    @DisplayName("Verify TransferScreen account number normalization")
+    void testTransferAccountNumberNormalization() {
+        assertEquals("DGB-429309564", TransferScreen.normalizeAccountNumber("429309564"));
+        assertEquals("DGB-429309564", TransferScreen.normalizeAccountNumber("dgb-429309564"));
+        assertEquals("DGB-429309564", TransferScreen.normalizeAccountNumber("DGB-429309564"));
+        assertEquals("DGB-429309564", TransferScreen.normalizeAccountNumber("  429309564  "));
+        assertEquals("", TransferScreen.normalizeAccountNumber(""));
+        assertEquals("", TransferScreen.normalizeAccountNumber(null));
+    }
+
+    @Test
+    @DisplayName("Verify TransferScreen form and confirmation layouts strictly conform to 82 columns")
+    void testTransferScreenLayoutWidth() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        // Header & Details
+        assertEquals(82, TUIBox.visibleLength(TUIBox.top(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > MONEY MOVEMENT > TRANSFER"), width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("TRANSFER DETAILS", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        // Field rows
+        String srcRow = TUIFormHelper.formatFieldRow("Source Account", "DGB-788635551 (SAVINGS - Bal: $14,400.00 USD)", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(srcRow));
+
+        String dstRow = TUIFormHelper.formatFieldRow("Destination Acc", "DGB-429309564", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(dstRow));
+
+        String benRow = TUIFormHelper.formatInfoRow("Beneficiary Name", "KEO SOKHA (Verified)", 18, 50);
+        assertEquals(82, TUIBox.visibleLength(benRow));
+
+        String amtRow = TUIFormHelper.formatFieldRow("Transfer Amount", "2,500.00 USD", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(amtRow));
+
+        String remRow = TUIFormHelper.formatFieldRow("Remark (Optional)", "For your new IPhone 18 Pro Max, babe", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(remRow));
+
+        String catRow = TUIFormHelper.formatFieldRow("Category", "(6) Bills & Utilities", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(catRow));
+
+        // Action compartment
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  ACTION", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        String btnRow = TUIBox.line("  ▸ [1] Review & Submit Transfer                  [2] Cancel & Return", width);
+        assertEquals(82, TUIBox.visibleLength(btnRow));
+
+        assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
+
+        // Confirmation Screen
+        assertEquals(82, TUIBox.visibleLength(TUIBox.top(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > MONEY MOVEMENT > CONFIRM TRANSFER"), width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("TRANSACTION VERIFICATION", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Source Account    : DGB-788635551 (SAVINGS - USD)", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Available Balance : $ 14,400.00 USD", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Destination Acc   : DGB-429309564 (CHECKING - USD)", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Beneficiary Name  : KEO SOKHA", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Transfer Amount   : $  2,500.00 USD", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Transfer Fee      : $      0.00 USD (Internal DigiBank Transfer)", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Remaining Balance : $ 11,900.00 USD", width)));
+        String catName = "Bills & Utilities";
+        String memoStr = "For your new IPhone 18 Pro Max, babe";
+        int maxMemoLen = width - 4 - 24 - catName.length() - 4;
+        if (maxMemoLen > 3 && memoStr.length() > maxMemoLen) {
+            memoStr = memoStr.substring(0, maxMemoLen - 3) + "...";
+        }
+        String catMemo = String.format("  Category / Memo   : %s / \"%s\"", catName, memoStr);
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(catMemo, width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  CONFIRM EXECUTION", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+        String confBtnRow = TUIBox.line("  ▸ [1] Authorize & Send Transfer                 [2] Back to Edit Details", width);
+        assertEquals(82, TUIBox.visibleLength(confBtnRow));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
+    }
+
+    @Test
+    @DisplayName("Verify WithdrawScreen layout and action controls strictly conform to 82 columns")
+    void testWithdrawScreenLayoutWidth() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        // Header & Details
+        assertEquals(82, TUIBox.visibleLength(TUIBox.top(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > WITHDRAW AMOUNT"), width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("WITHDRAWAL DETAILS", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        String srcRow = TUIFormHelper.formatFieldRow("Source Account", "DGB-788635551 (SAVINGS - USD)", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(srcRow));
+        String balRow = TUIFormHelper.formatInfoRow("Available Balance", "$ 14,400.00 USD", 18, 50);
+        assertEquals(82, TUIBox.visibleLength(balRow));
+
+        String amtRow = TUIFormHelper.formatFieldRow("Withdrawal Amount", "$ 2,500.00", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(amtRow));
+        String remRow = TUIFormHelper.formatFieldRow("Remark (Optional)", "To buy new IPhone 18 Pro Max to my girl", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(remRow));
+        String catRow = TUIFormHelper.formatFieldRow("Expense Category", "(4) Entertainment", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(catRow));
+
+        // Action Compartment & Status Line
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  ACTION", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        String actRow = TUIBox.line("  ▸ [1] Authorize & Dispense Cash                 [2] Cancel & Return", width);
+        assertEquals(82, TUIBox.visibleLength(actRow));
+
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        String statusRow = TUIBox.line("Status: Ready", width);
+        assertEquals(82, TUIBox.visibleLength(statusRow));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
+    }
+
+    @Test
+    @DisplayName("Verify DepositScreen layout and action controls strictly conform to 82 columns")
+    void testDepositScreenLayoutWidth() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        // Header & Details
+        assertEquals(82, TUIBox.visibleLength(TUIBox.top(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > CASH DEPOSIT"), width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("DEPOSIT DETAILS", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        String tgtRow = TUIFormHelper.formatFieldRow("Target Account", "DGB-429309564 (CHECKING - USD)", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(tgtRow));
+        String balRow = TUIFormHelper.formatInfoRow("Current Balance", "$ 2,700.00 USD", 18, 50);
+        assertEquals(82, TUIBox.visibleLength(balRow));
+
+        String amtRow = TUIFormHelper.formatFieldRow("Deposit Amount", "$ 1,000.00", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(amtRow));
+        String remRow = TUIFormHelper.formatFieldRow("Remark (Optional)", "yes", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(remRow));
+        String catRow = TUIFormHelper.formatFieldRow("Category", "(0) None / Skip (Default)", false, 18, 50);
+        assertEquals(82, TUIBox.visibleLength(catRow));
+
+        // Action Compartment & Status Line
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  ACTION", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        String actRow = TUIBox.line("  ▸ [1] Authorize & Accept Deposit                [2] Cancel & Return", width);
+        assertEquals(82, TUIBox.visibleLength(actRow));
+
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        String statusRow = TUIBox.line("Status: Ready", width);
+        assertEquals(82, TUIBox.visibleLength(statusRow));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
+    }
 }
 
