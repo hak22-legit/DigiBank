@@ -4,6 +4,7 @@ import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUIFormHelper;
 import com.bank.console.components.TUILayout;
 import com.bank.console.screens.*;
+import com.bank.console.theme.ConsoleTheme;
 import com.bank.model.TransactionView;
 import com.bank.model.entity.Transaction;
 import com.bank.model.enums.Currency;
@@ -82,25 +83,57 @@ public class ScreenVisualVerificationTest {
     @DisplayName("Verify TransactionHistoryScreen ledger table row fits strictly inside 82 columns")
     void testLedgerRowWidth() {
         int width = TUILayout.APP_WIDTH;
-        DecimalFormat df = new DecimalFormat("#,##0.00");
+        assertEquals(82, width);
 
-        String tableHeader = String.format("%-16s  %-10s  %-21s  %11s  %11s",
-                "DATE & TIME", "TYPE", "DESCRIPTION", "AMOUNT", "BALANCE");
-        assertEquals(82, TUIBox.visibleLength(TUIBox.line(tableHeader, width)));
+        String borderChar = ConsoleTheme.border(String.valueOf(TUIBox.V));
 
-        String lineDivider = "─".repeat(77);
-        assertEquals(82, TUIBox.visibleLength(TUIBox.line(lineDivider, width)));
+        // Header Row: border + 80 chars + border = 82
+        String tableHeader = String.format("   %-17s    %-12s    %-25s    %10s ",
+                "DATE & TIME", "TYPE", "CATEGORY", "AMOUNT");
+        assertEquals(80, tableHeader.length());
+        String headerLine = borderChar + tableHeader + borderChar;
+        assertEquals(82, TUIBox.visibleLength(headerLine));
 
-        String row = String.format("%-16s  %-10s  %-21s  %11s  %11s",
-                "2026-09-11 00:28", "REPAYMENT", "Loan #LN-102", "-$   50.00", "$ 2,700.00");
-        assertEquals(82, TUIBox.visibleLength(TUIBox.line(row, width)), "Ledger row must fit strictly within 82 columns");
+        // Separator Line: border + 80 chars + border = 82
+        String lineDivider = " " + "─".repeat(77) + "  ";
+        assertEquals(80, lineDivider.length());
+        String sepLine = borderChar + lineDivider + borderChar;
+        assertEquals(82, TUIBox.visibleLength(sepLine));
+
+        // Unselected Data Row
+        String plainText = String.format(" %-2s%-17s    %-12s    %-25s    %10s ",
+                " ", "2026-09-11 00:28", "REPAYMENT", "Loans", "-$  50.00");
+        assertEquals(80, plainText.length(), "Plain text must evaluate to exactly 80 chars");
+        String unselectedRow = borderChar + plainText + borderChar;
+        assertEquals(82, TUIBox.visibleLength(unselectedRow), "Unselected row must fit strictly within 82 columns");
+
+        // Selected Data Row with ANSI Reverse Highlight
+        String selectedPlainText = String.format(" %-2s%-17s    %-12s    %-25s    %10s ",
+                "▸", "2026-09-11 00:28", "REPAYMENT", "Loans", "-$  50.00");
+        assertEquals(80, selectedPlainText.length(), "Selected plain text must evaluate to exactly 80 chars");
+        String selectedRow = borderChar + ConsoleTheme.REVERSE + selectedPlainText + ConsoleTheme.RESET + borderChar;
+        assertEquals(82, TUIBox.visibleLength(selectedRow), "Selected row with ANSI reverse video must not blow out right border");
+
+        // Selected transaction details compartment
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("SELECTED TRANSACTION DETAILS", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Reference ID : TXN-20260911-00892", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Description  : Monthly installment repayment for Business Equipment Loan #4", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Channel/Peer : Automated Debit / Credit Bureau System", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Status       : COMPLETED (Settled at 2026-09-11 00:28:14 UTC)", width)));
 
         // Summary row inside box
         String pageIndicator = String.format("Page: [ %d / %d ]", 1, 3);
         String filterIndicator = String.format("Filter: [%s]", "ALL TRANSACTIONS");
-        String totalIndicator = String.format("Total Records: %d", 14);
+        String totalIndicator = String.format("Total Records: %d", 13);
         String summaryRow = String.format("%-19s│ %-28s│ %s", pageIndicator, filterIndicator, totalIndicator);
         assertEquals(82, TUIBox.visibleLength(TUIBox.line(summaryRow, width)), "Summary row must fit strictly within 82 columns");
+
+        // Details Subscreen
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("DIGIBANK CORE > TRANSACTIONS LEDGER > TRANSACTION DETAILS", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("TRANSACTION SUMMARY", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Transaction ID   : TXN-20260911-00892", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  Gross Amount     : -$ 50.00 USD", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("   ▸ [1] Return to Ledger       [2] Export Receipt (PDF)", width)));
     }
 
     @Test
@@ -170,5 +203,94 @@ public class ScreenVisualVerificationTest {
 
         BigDecimal exchangeRate = CurrencyConverter.getExchangeRate("USD", "KHR", rates);
         assertEquals(new BigDecimal("4100.0000"), exchangeRate);
+
+        // Convert USD to JPY (Rate = 152.40)
+        BigDecimal creditJpy = CurrencyConverter.convert(new BigDecimal("10.00"), "USD", "JPY", rates);
+        assertEquals(new BigDecimal("1524.00"), creditJpy);
+        assertEquals(new BigDecimal("152.4000"), CurrencyConverter.getExchangeRate("USD", "JPY", rates));
+    }
+
+    @Test
+    @DisplayName("Verify ExchangeScreen layout rows strictly conform to 82 columns")
+    void testExchangeScreenVisualLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        // Header & Spot rates
+        assertEquals(82, TUIBox.visibleLength(TUIBox.top(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("DIGIBANK CORE > CURRENCY EXCHANGE & CONVERSION CALCULATOR", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("LIVE SPOT RATES (BASE: USD) • SOURCE: open.er-api.com", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        String tableHeader = String.format("  %-15s %-22s %22s", "Currency Code", "Name", "Spot Rate (1 USD)");
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(tableHeader, width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  " + "─".repeat(76), width)));
+
+        String jpyLine = String.format("  %-15s %-22s %22s", "JPY", "Japanese Yen", "¥ 152.40");
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(jpyLine, width)));
+
+        // Simulator rows
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("INSTANT EXCHANGE SIMULATOR", width)));
+        String radioRow = String.format("  %-17s: [ %-53s ]", "Source Currency", "(•) USD     ( ) KHR     ( ) EUR     ( ) JPY");
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(radioRow, width)));
+
+        String amountRow = String.format("  %-17s: [ %-53s ]", "Amount to Convert", "$ 500.00|");
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(amountRow, width)));
+
+        String returnRow = String.format("  Estimated Return  :   %s", "៛ 2,022,090.00 KHR");
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(returnRow, width)));
+
+        String feeRow = "  Applied Fee       :   $ 0.00 (Standard Tier - Zero Fee)";
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(feeRow, width)));
+
+        // Actions row
+        String actionLine = "    [1] Refresh Rates       [2] Swap Currencies       [3] Clear / Reset";
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(actionLine, width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
+    }
+
+    @Test
+    @DisplayName("Verify RegisterScreen layout rows strictly conform to 82 columns")
+    void testRegisterScreenLayoutWidth() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        // Header & Compartment titles
+        assertEquals(82, TUIBox.visibleLength(TUIBox.top(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("DIGIBANK CORE > NEW CUSTOMER REGISTRATION", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.divider(width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("CUSTOMER PROFILE", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.emptyLine(width)));
+
+        // Profile fields
+        String fieldRow1 = TUIBox.line(String.format(" %-18s: [ %-53s ]", "Full Legal Name", "MEN SENGHAK"), width);
+        assertEquals(82, TUIBox.visibleLength(fieldRow1), "Full Legal Name row must be 82 cols");
+
+        String passwordRow = TUIBox.line(String.format(" %-18s: [ %-53s ]", "Password", "•".repeat(16)), width);
+        assertEquals(82, TUIBox.visibleLength(passwordRow), "Password row must be 82 cols");
+
+        // Account Configuration section
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("INITIAL ACCOUNT CONFIGURATION", width)));
+
+        String radioType = TUIBox.line(String.format(" %-18s: [ %-22s %-30s ]", "Account Type", "(•) SAVINGS", "( ) CHECKING"), width);
+        assertEquals(82, TUIBox.visibleLength(radioType), "Account Type radio row must be 82 cols");
+
+        String radioCurr = TUIBox.line(String.format(" %-18s: [ %-22s %-30s ]", "Primary Currency", "(•) USD", "( ) KHR"), width);
+        assertEquals(82, TUIBox.visibleLength(radioCurr), "Currency radio row must be 82 cols");
+
+        String depositRow = TUIBox.line(String.format(" %-18s: [ %-53s ]", "Initial Deposit", "$ 100.00"), width);
+        assertEquals(82, TUIBox.visibleLength(depositRow), "Initial Deposit row must be 82 cols");
+
+        // Action section
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line("ACTION", width)));
+        String actionRow = TUIBox.line("   ▸ [1] Submit Registration                       [2] Cancel & Return", width);
+        assertEquals(82, TUIBox.visibleLength(actionRow), "Action row must be 82 cols");
+
+        // Footer Note & Bottom
+        String noteRow = TUIBox.line("Note: Passwords hashed via BCrypt. Account numbers generated automatically.", width);
+        assertEquals(82, TUIBox.visibleLength(noteRow), "Note row must be 82 cols");
+        assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
     }
 }
+

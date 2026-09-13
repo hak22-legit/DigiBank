@@ -20,7 +20,7 @@ public final class CurrencyConverter {
         map.put("USD", new BigDecimal("1.0000"));
         map.put("KHR", new BigDecimal("4100.0000"));
         map.put("EUR", new BigDecimal("0.9200"));
-        map.put("THB", new BigDecimal("36.0000"));
+        map.put("JPY", new BigDecimal("152.4000"));
         FALLBACK_RATES = Collections.unmodifiableMap(map);
     }
 

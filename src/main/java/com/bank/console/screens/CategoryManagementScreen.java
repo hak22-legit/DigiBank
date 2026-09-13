@@ -59,10 +59,15 @@ public class CategoryManagementScreen implements Screen {
 
         int selectedIndex = 0;
         boolean firstRender = true;
+        boolean needsReload = true;
+        List<Category> categories = null;
 
         try {
             while (true) {
-                List<Category> categories = categoryController.getVisibleCategories(userEntity);
+                if (needsReload) {
+                    categories = categoryController.getVisibleCategories(userEntity);
+                    needsReload = false;
+                }
 
                 StringBuilder sb = new StringBuilder();
                 sb.append(TUIBox.top(width)).append("\n");
@@ -138,6 +143,7 @@ public class CategoryManagementScreen implements Screen {
                         terminal.setAttributes(origAttributes);
                         handleCreateCategory(userEntity, width);
                         origAttributes = terminal.enterRawMode();
+                        needsReload = true;
                         firstRender = true;
                     } else {
                         navigator.pop();
@@ -147,7 +153,10 @@ public class CategoryManagementScreen implements Screen {
                     terminal.setAttributes(origAttributes);
                     handleCreateCategory(userEntity, width);
                     origAttributes = terminal.enterRawMode();
+                    needsReload = true;
                     firstRender = true;
+                } else if (ch == 'r' || ch == 'R') {
+                    needsReload = true;
                 } else if (ch == '0' || ch == 'b' || ch == 'B') {
                     navigator.pop();
                     return;

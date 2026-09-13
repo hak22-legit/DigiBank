@@ -32,7 +32,7 @@ class LiveCurrencyServiceTest {
         assertTrue(rates.containsKey("USD"));
         assertTrue(rates.containsKey("KHR"));
         assertTrue(rates.containsKey("EUR"));
-        assertTrue(rates.containsKey("THB"));
+        assertTrue(rates.containsKey("JPY"));
         assertEquals(new BigDecimal("1.0000"), rates.get("USD"));
         assertEquals(new BigDecimal("4100.0000"), rates.get("KHR"));
     }
@@ -52,7 +52,7 @@ class LiveCurrencyServiceTest {
                     "USD": 1.0,
                     "KHR": 4120.0,
                     "EUR": 0.93,
-                    "THB": 35.8
+                    "JPY": 152.4
                   }
                 }
                 """;

@@ -6,6 +6,9 @@ import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
+import com.bank.console.components.TUIFormHelper;
+import com.bank.console.components.TUIFormHelper.KeyAction;
+import com.bank.console.components.TUIFormHelper.KeyEvent;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
@@ -21,8 +24,7 @@ public class WelcomeScreen implements Screen {
             "[1] Sign In (Customer & Staff)",
             "[2] Open New Account (Register)",
             "[3] Forgot Password (OTP Recovery)",
-            "[4] Currency Exchange Rates & Calculator",
-            "[5] Exit DigiBank"
+            "[4] Exit DigiBank"
     };
 
     private static final String[] LOGO_LINES = {
@@ -46,28 +48,24 @@ public class WelcomeScreen implements Screen {
             while (true) {
                 renderScreen(session, selectedIndex, firstRender);
                 firstRender = false;
-                int ch = reader.read();
 
-                if (ch == 27) { // Escape sequence
-                    int next = reader.read(100);
-                    if (next == '[' || next == 'O') {
-                        int code = reader.read();
-                        if (code == 'A') { // Up Arrow
-                            selectedIndex = (selectedIndex - 1 + MENU_ITEMS.length) % MENU_ITEMS.length;
-                        } else if (code == 'B') { // Down Arrow
-                            selectedIndex = (selectedIndex + 1) % MENU_ITEMS.length;
-                        }
-                    }
-                } else if (ch == '\r' || ch == '\n') { // Enter key
+                KeyEvent event = TUIFormHelper.readKey(reader);
+                if (event.action() == KeyAction.ESCAPE) {
+                    executeChoice(MENU_ITEMS.length - 1, navigator, session);
+                    return;
+                } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
+                    selectedIndex = (selectedIndex - 1 + MENU_ITEMS.length) % MENU_ITEMS.length;
+                } else if (event.action() == KeyAction.DOWN || event.action() == KeyAction.TAB || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
+                    selectedIndex = (selectedIndex + 1) % MENU_ITEMS.length;
+                } else if (event.action() == KeyAction.SHIFT_TAB) {
+                    selectedIndex = (selectedIndex - 1 + MENU_ITEMS.length) % MENU_ITEMS.length;
+                } else if (event.action() == KeyAction.ENTER) {
                     executeChoice(selectedIndex, navigator, session);
                     return;
-                } else if (ch >= '1' && ch <= '5') { // Direct number key
-                    int num = ch - '1';
+                } else if (event.action() == KeyAction.DIGIT && event.ch() >= '1' && event.ch() <= '4') {
+                    int num = event.ch() - '1';
                     executeChoice(num, navigator, session);
                     return;
-                } else if (ch == 3) { // Ctrl+C
-                    session.clearScreen();
-                    System.exit(0);
                 }
             }
         } catch (IOException e) {
@@ -117,8 +115,7 @@ public class WelcomeScreen implements Screen {
             case 0 -> navigator.push(new LoginScreen());
             case 1 -> navigator.push(new RegisterScreen());
             case 2 -> navigator.push(new ForgotPasswordScreen());
-            case 3 -> navigator.push(new ExchangeScreen());
-            case 4 -> {
+            case 3 -> {
                 session.clearScreen();
                 System.out.println(ConsoleTheme.muted("Thank you for choosing DigiBank. Goodbye!"));
                 System.exit(0);

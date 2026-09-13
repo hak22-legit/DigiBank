@@ -41,19 +41,19 @@ public final class TUIFormHelper {
         }
 
         if (ch == 27) { // ESC or Escape Sequence
-            int next = reader.read(60);
+            int next = reader.read(25);
             if (next == -2 || next == -1) {
                 return new KeyEvent(KeyAction.ESCAPE, (char) 27, 27);
             }
             if (next == '[' || next == 'O') {
-                int code = reader.read();
+                int code = reader.read(25);
                 return switch (code) {
                     case 'A' -> new KeyEvent(KeyAction.UP, 'A', code);
                     case 'B' -> new KeyEvent(KeyAction.DOWN, 'B', code);
                     case 'C' -> new KeyEvent(KeyAction.RIGHT, 'C', code);
                     case 'D' -> new KeyEvent(KeyAction.LEFT, 'D', code);
                     case 'Z' -> new KeyEvent(KeyAction.SHIFT_TAB, 'Z', code);
-                    default -> new KeyEvent(KeyAction.OTHER, (char) code, code);
+                    default -> new KeyEvent(KeyAction.OTHER, (char) (code > 0 ? code : 0), code);
                 };
             }
             return new KeyEvent(KeyAction.ESCAPE, (char) next, next);

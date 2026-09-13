@@ -20,6 +20,9 @@ import com.bank.model.entity.User;
 import com.bank.model.enums.LoanPaymentStatus;
 import com.bank.model.enums.LoanStatus;
 import com.bank.security.SessionManager;
+import com.bank.console.components.TUIFormHelper;
+import com.bank.console.components.TUIFormHelper.KeyAction;
+import com.bank.console.components.TUIFormHelper.KeyEvent;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
@@ -78,34 +81,54 @@ public class LoanScreen implements Screen {
 
         int selectedIndex = 0; // 0: Payment, 1: Apply, 2: Back
         boolean firstRender = true;
+        boolean needsReload = true;
+
+        List<LoanDTO> loans = null;
+        LoanDTO activeLoan = null;
+        List<LoanPayment> payments = null;
+        BigDecimal monthlyDue = new BigDecimal("226.45");
+        String accNum = "ACC-770912401";
 
         try {
             while (true) {
-                List<LoanDTO> loans = null;
-                try {
-                    loans = loanController.getUserLoans(userEntity);
-                } catch (Exception ignored) {}
-
-                LoanDTO activeLoan = null;
-                if (loans != null) {
-                    activeLoan = loans.stream()
-                            .filter(l -> l.getStatus() == LoanStatus.ACTIVE || l.getStatus() == LoanStatus.APPROVED)
-                            .findFirst()
-                            .orElse(loans.isEmpty() ? null : loans.get(0));
-                }
-
-                // Repayment Schedule
-                List<LoanPayment> payments = null;
-                if (activeLoan != null) {
+                if (needsReload) {
                     try {
-                        payments = loanController.getPaymentHistory(activeLoan.getLoanId(), userEntity);
+                        loans = loanController.getUserLoans(userEntity);
                     } catch (Exception ignored) {}
-                }
 
-                // Compute monthly payment estimation
-                BigDecimal monthlyDue = new BigDecimal("226.45");
-                if (activeLoan != null && activeLoan.getApprovedAmount() != null && activeLoan.getTermMonths() != null && activeLoan.getTermMonths() > 0) {
-                    monthlyDue = activeLoan.getApprovedAmount().divide(BigDecimal.valueOf(activeLoan.getTermMonths()), 2, RoundingMode.HALF_UP);
+                    activeLoan = null;
+                    if (loans != null) {
+                        activeLoan = loans.stream()
+                                .filter(l -> l.getStatus() == LoanStatus.ACTIVE || l.getStatus() == LoanStatus.APPROVED)
+                                .findFirst()
+                                .orElse(loans.isEmpty() ? null : loans.get(0));
+                    }
+
+                    // Repayment Schedule
+                    payments = null;
+                    if (activeLoan != null) {
+                        try {
+                            payments = loanController.getPaymentHistory(activeLoan.getLoanId(), userEntity);
+                        } catch (Exception ignored) {}
+                    }
+
+                    // Compute monthly payment estimation
+                    monthlyDue = new BigDecimal("226.45");
+                    if (activeLoan != null && activeLoan.getApprovedAmount() != null && activeLoan.getTermMonths() != null && activeLoan.getTermMonths() > 0) {
+                        monthlyDue = activeLoan.getApprovedAmount().divide(BigDecimal.valueOf(activeLoan.getTermMonths()), 2, RoundingMode.HALF_UP);
+                    }
+
+                    accNum = "ACC-770912401";
+                    if (activeLoan != null && activeLoan.getLoanId() != null) {
+                        try {
+                            var fullLoan = ControllerFactory.getLoanRepository().findById(activeLoan.getLoanId());
+                            if (fullLoan.isPresent() && fullLoan.get().getAccountId() != null) {
+                                Account acc = ControllerFactory.getAccountRepository().findById(fullLoan.get().getAccountId()).orElse(null);
+                                if (acc != null) accNum = acc.getAccountNumber();
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    needsReload = false;
                 }
 
                 StringBuilder sb = new StringBuilder();
@@ -127,17 +150,6 @@ public class LoanScreen implements Screen {
                     String termStr = (activeLoan.getTermMonths() != null ? activeLoan.getTermMonths() : 24) + " Months";
                     String balStr = "$" + df.format(activeLoan.getOutstandingBalance() != null ? activeLoan.getOutstandingBalance() : BigDecimal.ZERO);
                     String riskStr = activeLoan.getRiskLevel() != null ? activeLoan.getRiskLevel().name() : "LOW";
-
-                    String accNum = "ACC-770912401";
-                    if (activeLoan.getLoanId() != null) {
-                        try {
-                            var fullLoan = ControllerFactory.getLoanRepository().findById(activeLoan.getLoanId());
-                            if (fullLoan.isPresent() && fullLoan.get().getAccountId() != null) {
-                                Account acc = ControllerFactory.getAccountRepository().findById(fullLoan.get().getAccountId()).orElse(null);
-                                if (acc != null) accNum = acc.getAccountNumber();
-                            }
-                        } catch (Exception ignored) {}
-                    }
 
                     String row1 = String.format("  Requested : %-12s  Approved : %-14s  Rate  : %s", reqStr, appStr, rateStr);
                     String row2 = String.format("  Term      : %-12s  Balance  : %-14s  Risk  : %s", termStr, balStr, riskStr);
@@ -185,7 +197,7 @@ public class LoanScreen implements Screen {
                 String opt2 = "[2] Apply for New Loan";
                 String opt3 = "[3] Back to Customer Dashboard";
 
-                sb.append(TUIBox.line(selectedIndex == 0 ? ("   ► " + ConsoleTheme.highlight(opt1)) : ("     " + opt1), width)).append("\n");
+                sb.append(TUIBox.line(selectedIndex == 0 ? ("   ▸ " + ConsoleTheme.highlight(opt1)) : ("     " + opt1), width)).append("\n");
                 sb.append(TUIBox.line(selectedIndex == 1 ? ("   ► " + ConsoleTheme.highlight(opt2)) : ("     " + opt2), width)).append("\n");
                 sb.append(TUIBox.line(selectedIndex == 2 ? ("   ► " + ConsoleTheme.highlight(opt3)) : ("     " + opt3), width)).append("\n");
                 sb.append(TUIBox.bottom(width)).append("\n");
@@ -194,30 +206,25 @@ public class LoanScreen implements Screen {
                     String statusDisplay = isErrorStatus ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage);
                     sb.append(" Status: ").append(statusDisplay).append("\n");
                 }
-                sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1-3] Quick Select  •  [Esc] Back")).append("\n");
+                sb.append(ConsoleTheme.muted("  [↑/↓/Tab] Navigate  •  [Enter] Select  •  [1-3] Quick Select  •  [R] Refresh  •  [Esc] Back")).append("\n");
 
                 ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
-                // Read non-blocking raw key
-                int ch = reader.read();
+                // Read non-blocking raw key via TUIFormHelper
+                KeyEvent event = TUIFormHelper.readKey(reader);
 
-                if (ch == 27) { // ESC or Escape sequence
-                    int next = reader.read(60);
-                    if (next == -2 || next == -1) {
-                        terminal.setAttributes(origAttributes);
-                        navigator.pop();
-                        return;
-                    }
-                    if (next == '[' || next == 'O') {
-                        int code = reader.read();
-                        if (code == 'A') { // Up
-                            selectedIndex = (selectedIndex - 1 + 3) % 3;
-                        } else if (code == 'B') { // Down
-                            selectedIndex = (selectedIndex + 1) % 3;
-                        }
-                    }
-                } else if (ch == '\r' || ch == '\n') { // Enter
+                if (event.action() == KeyAction.ESCAPE) {
+                    terminal.setAttributes(origAttributes);
+                    navigator.pop();
+                    return;
+                } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
+                    selectedIndex = (selectedIndex - 1 + 3) % 3;
+                } else if (event.action() == KeyAction.DOWN || event.action() == KeyAction.TAB || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
+                    selectedIndex = (selectedIndex + 1) % 3;
+                } else if (event.action() == KeyAction.SHIFT_TAB) {
+                    selectedIndex = (selectedIndex - 1 + 3) % 3;
+                } else if (event.action() == KeyAction.ENTER) {
                     if (selectedIndex == 0) {
                         terminal.setAttributes(origAttributes);
                         navigator.push(new LoanRepaymentScreen(loanController, accountController));
@@ -226,28 +233,33 @@ public class LoanScreen implements Screen {
                         terminal.setAttributes(origAttributes);
                         handleApplyLoan(userEntity);
                         origAttributes = terminal.enterRawMode();
+                        needsReload = true;
                         firstRender = true;
                     } else if (selectedIndex == 2) {
                         terminal.setAttributes(origAttributes);
                         navigator.pop();
                         return;
                     }
-                } else if (ch == '1') {
+                } else if (event.action() == KeyAction.DIGIT && event.ch() == '1') {
                     terminal.setAttributes(origAttributes);
                     navigator.push(new LoanRepaymentScreen(loanController, accountController));
                     return;
-                } else if (ch == '2') {
+                } else if (event.action() == KeyAction.DIGIT && event.ch() == '2') {
                     terminal.setAttributes(origAttributes);
                     handleApplyLoan(userEntity);
                     origAttributes = terminal.enterRawMode();
+                    needsReload = true;
                     firstRender = true;
-                } else if (ch == '3' || ch == 'b' || ch == 'B' || ch == '0') {
+                } else if (event.action() == KeyAction.DIGIT && (event.ch() == '3' || event.ch() == '0')) {
                     terminal.setAttributes(origAttributes);
                     navigator.pop();
                     return;
-                } else if (ch == 3) { // Ctrl+C
-                    session.clearScreen();
-                    System.exit(0);
+                } else if (event.action() == KeyAction.CHAR && (event.ch() == 'b' || event.ch() == 'B')) {
+                    terminal.setAttributes(origAttributes);
+                    navigator.pop();
+                    return;
+                } else if (event.action() == KeyAction.CHAR && (event.ch() == 'r' || event.ch() == 'R')) {
+                    needsReload = true;
                 }
             }
         } catch (IOException e) {

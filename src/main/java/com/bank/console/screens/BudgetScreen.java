@@ -95,34 +95,38 @@ public class BudgetScreen implements Screen {
 
         int selectedIndex = 0; // 0: Create Goal, 1: Deposit, 2: Set Budget, 3: Back
         boolean firstRender = true;
+        boolean needsReload = true;
+
+        Map<Long, String> catMap = new HashMap<>();
+        List<Category> categories = null;
+        List<BudgetView> budgets = null;
+        List<SavingGoal> goals = null;
+        List<SavingGoal> activeGoals = List.of();
 
         try {
             while (true) {
-                // Cache Categories
-                Map<Long, String> catMap = new HashMap<>();
-                List<Category> categories = null;
-                try {
-                    categories = categoryController.getVisibleCategories(userEntity);
-                    if (categories != null) {
-                        for (Category c : categories) catMap.put(c.getCategoryId(), c.getName());
-                    }
-                } catch (Exception ignored) {}
+                if (needsReload) {
+                    catMap.clear();
+                    try {
+                        categories = categoryController.getVisibleCategories(userEntity);
+                        if (categories != null) {
+                            for (Category c : categories) catMap.put(c.getCategoryId(), c.getName());
+                        }
+                    } catch (Exception ignored) {}
 
-                // Load Budgets
-                List<BudgetView> budgets = null;
-                try {
-                    budgets = budgetController.getBudgetsWithUsage(userEntity);
-                } catch (Exception ignored) {}
+                    try {
+                        budgets = budgetController.getBudgetsWithUsage(userEntity);
+                    } catch (Exception ignored) {}
 
-                // Load Goals
-                List<SavingGoal> goals = null;
-                try {
-                    goals = savingGoalController.getGoalsForUser(userEntity);
-                } catch (Exception ignored) {}
+                    try {
+                        goals = savingGoalController.getGoalsForUser(userEntity);
+                    } catch (Exception ignored) {}
 
-                List<SavingGoal> activeGoals = goals != null
-                        ? goals.stream().filter(g -> g.getStatus() == GoalStatus.ACTIVE).toList()
-                        : List.of();
+                    activeGoals = goals != null
+                            ? goals.stream().filter(g -> g.getStatus() == GoalStatus.ACTIVE).toList()
+                            : List.of();
+                    needsReload = false;
+                }
 
                 StringBuilder sb = new StringBuilder();
 
@@ -243,12 +247,15 @@ public class BudgetScreen implements Screen {
                 } else if (event.action() == KeyAction.ENTER) {
                     if (selectedIndex == 0) {
                         handleCreateGoalEnclosed(terminal, reader, userEntity, width);
+                        needsReload = true;
                         firstRender = true;
                     } else if (selectedIndex == 1) {
                         handleDepositGoalEnclosed(terminal, reader, userEntity, activeGoals, width);
+                        needsReload = true;
                         firstRender = true;
                     } else if (selectedIndex == 2) {
                         handleSetBudgetEnclosed(terminal, reader, userEntity, categories, width);
+                        needsReload = true;
                         firstRender = true;
                     } else if (selectedIndex == 3) {
                         terminal.setAttributes(origAttributes);
@@ -258,15 +265,20 @@ public class BudgetScreen implements Screen {
                 } else if (event.ch() == '1') {
                     selectedIndex = 0;
                     handleCreateGoalEnclosed(terminal, reader, userEntity, width);
+                    needsReload = true;
                     firstRender = true;
                 } else if (event.ch() == '2') {
                     selectedIndex = 1;
                     handleDepositGoalEnclosed(terminal, reader, userEntity, activeGoals, width);
+                    needsReload = true;
                     firstRender = true;
                 } else if (event.ch() == '3') {
                     selectedIndex = 2;
                     handleSetBudgetEnclosed(terminal, reader, userEntity, categories, width);
+                    needsReload = true;
                     firstRender = true;
+                } else if (event.ch() == 'r' || event.ch() == 'R') {
+                    needsReload = true;
                 } else if (event.ch() == '4' || event.ch() == 'b' || event.ch() == 'B' || event.ch() == '0') {
                     terminal.setAttributes(origAttributes);
                     navigator.pop();
