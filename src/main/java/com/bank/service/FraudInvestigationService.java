@@ -20,7 +20,7 @@ import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public class FraudInvestigationService {
+public class FraudInvestigationService implements FraudAlertService {
 
     private final FraudAlertRepository fraudAlertRepository;
     private final AccountRepository accountRepository;
@@ -187,8 +187,8 @@ public class FraudInvestigationService {
     }
 
     private void assertComplianceOfficer(Admin admin) {
-        if (admin.getRole() != AdminRole.COMPLIANCE_OFFICER) {
-            throw new UnauthorizedException("Only COMPLIANCE_OFFICER can perform this action");
+        if (admin.getRole() != AdminRole.COMPLIANCE_OFFICER && admin.getRole() != AdminRole.SUPER_ADMIN) {
+            throw new UnauthorizedException("Only COMPLIANCE_OFFICER or SUPER_ADMIN can perform this action");
         }
     }
 }

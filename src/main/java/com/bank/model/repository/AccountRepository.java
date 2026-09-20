@@ -27,4 +27,13 @@ public interface AccountRepository {
      * Used by Deposit/Withdrawal/Transfer services.
      */
     void updateWithConnection(Connection conn, Account account) throws SQLException;
+
+    /**
+     * Inserts a new account within an existing transaction/connection.
+     */
+    Account saveWithConnection(Connection conn, Account account) throws SQLException;
+
+    List<com.bank.model.dto.GlobalLedgerItem> findGlobalLedger(int offset, int limit, String search, com.bank.model.enums.Currency currency);
+    long countAccounts(String search, com.bank.model.enums.Currency currency);
+    java.util.Map<com.bank.model.enums.Currency, java.math.BigDecimal> getVaultTotalAssets();
 }

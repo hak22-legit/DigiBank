@@ -87,69 +87,7 @@ public class DepositScreen implements Screen {
             return;
         }
 
-        // 1. Select Account if multiple accounts
         AccountDTO targetAccount = accounts.get(0);
-        if (accounts.size() > 1) {
-            int selectedAccIdx = 0;
-            Terminal terminal = session.getTerminal();
-            Attributes origAttr = terminal.enterRawMode();
-            NonBlockingReader reader = terminal.reader();
-            boolean firstRender = true;
-            try {
-                while (true) {
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(TUIBox.top(width)).append("\n");
-                    sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > DEPOSIT ACCOUNT"), width)).append("\n");
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    sb.append(TUIBox.emptyLine(width)).append("\n");
-
-                    for (int i = 0; i < accounts.size(); i++) {
-                        AccountDTO acc = accounts.get(i);
-                        String row = String.format("[%d] %s (%s) — Balance: %s %s",
-                                i + 1, acc.getAccountNumber(), acc.getAccountType(),
-                                ConsoleFormatter.formatCurrency(acc.getBalance()), acc.getCurrency());
-                        if (i == selectedAccIdx) {
-                            sb.append(TUIBox.line("  ► " + ConsoleTheme.highlight(row), width)).append("\n");
-                        } else {
-                            sb.append(TUIBox.line("    " + row, width)).append("\n");
-                        }
-                    }
-
-                    sb.append(TUIBox.emptyLine(width)).append("\n");
-                    sb.append(TUIBox.bottom(width)).append("\n");
-                    String hotkeyRange = "1-" + Math.min(accounts.size(), 9);
-                    sb.append(ConsoleTheme.muted(String.format(" [↑/↓] Navigate  •  [Enter] Select  •  [%s] Hotkey  •  [Esc] Back", hotkeyRange))).append("\n");
-
-                    ScreenRenderer.render(sb.toString(), firstRender);
-                    firstRender = false;
-
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE) {
-                        terminal.setAttributes(origAttr);
-                        navigator.pop();
-                        return;
-                    } else if (event.action() == KeyAction.UP) {
-                        selectedAccIdx = (selectedAccIdx - 1 + accounts.size()) % accounts.size();
-                    } else if (event.action() == KeyAction.DOWN) {
-                        selectedAccIdx = (selectedAccIdx + 1) % accounts.size();
-                    } else if (event.action() == KeyAction.ENTER) {
-                        targetAccount = accounts.get(selectedAccIdx);
-                        break;
-                    } else if (event.action() == KeyAction.DIGIT && event.ch() >= '1' && event.ch() <= '0' + Math.min(accounts.size(), 9)) {
-                        targetAccount = accounts.get(event.ch() - '1');
-                        break;
-                    } else if (event.ch() == 'b' || event.ch() == 'B') {
-                        terminal.setAttributes(origAttr);
-                        navigator.pop();
-                        return;
-                    }
-                }
-            } catch (Exception e) {
-                targetAccount = accounts.get(0);
-            } finally {
-                terminal.setAttributes(origAttr);
-            }
-        }
 
         // Load Categories from Controller
         List<Category> dbCategories = new ArrayList<>();
@@ -168,15 +106,14 @@ public class DepositScreen implements Screen {
             }
         }
 
-        DecimalFormat df = new DecimalFormat("#,##0.00");
-
         // Form state:
-        // 0: Deposit Amount
-        // 1: Remark (Optional)
-        // 2: Category
-        // 3: [1] Authorize & Accept Deposit
-        // 4: [2] Cancel & Return
+        // 0: Target Account (opens DepositAccountSelectorModal)
+        // 1: Deposit Amount
+        // 2: Remark (Optional)
+        // 3: Category
+        // 4: Action Bar ([1] Authorize & Accept Deposit, [2] Cancel & Return)
         int focusedField = 0;
+        int actionIndex = 0; // 0: Authorize & Accept Deposit, 1: Cancel & Return
         StringBuilder amountBuf = new StringBuilder();
         StringBuilder remarkBuf = new StringBuilder();
         int selectedCategoryIdx = 0;
@@ -205,20 +142,21 @@ public class DepositScreen implements Screen {
 
                     String targetAccStr = String.format("%s (%s - %s)",
                             targetAccount.getAccountNumber(), targetAccount.getAccountType(), targetAccount.getCurrency());
-                    String balanceStr = String.format("$ %s %s", df.format(targetAccount.getBalance()), targetAccount.getCurrency());
+                    String balanceStr = ConsoleFormatter.formatAccountBalance(targetAccount.getBalance(), targetAccount.getCurrency());
 
-                    sb.append(TUIFormHelper.formatFieldRow("Target Account", targetAccStr, false, 18, 50)).append("\n");
+                    sb.append(TUIFormHelper.formatFieldRow("Target Account", targetAccStr, focusedField == 0, 18, 50)).append("\n");
                     sb.append(TUIFormHelper.formatInfoRow("Current Balance", balanceStr, 18, 50)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
                     String amountDisplay;
-                    if (focusedField == 0) {
-                        amountDisplay = amountBuf.toString().isEmpty() ? "" : amountBuf.toString();
+                    if (focusedField == 1) {
+                        amountDisplay = amountBuf.toString();
                     } else {
                         if (amountBuf.length() > 0) {
                             try {
                                 BigDecimal amt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
-                                amountDisplay = "$ " + df.format(amt);
+                                String sym = ConsoleFormatter.getCurrencySymbol(targetAccount.getCurrency());
+                                amountDisplay = sym + " " + ConsoleFormatter.formatAmount(amt, targetAccount.getCurrency());
                             } catch (Exception e) {
                                 amountDisplay = amountBuf.toString();
                             }
@@ -226,11 +164,11 @@ public class DepositScreen implements Screen {
                             amountDisplay = "";
                         }
                     }
-                    sb.append(TUIFormHelper.formatFieldRow("Deposit Amount", amountDisplay, focusedField == 0, 18, 50)).append("\n");
-                    sb.append(TUIFormHelper.formatFieldRow("Remark (Optional)", remarkBuf.toString(), focusedField == 1, 18, 50)).append("\n");
+                    sb.append(TUIFormHelper.formatFieldRow("Deposit Amount", amountDisplay, focusedField == 1, 18, 50)).append("\n");
+                    sb.append(TUIFormHelper.formatFieldRow("Remark (Optional)", remarkBuf.toString(), focusedField == 2, 18, 50)).append("\n");
 
                     String catDisplay = String.format("(%d) %s", selectedCategoryIdx, categoryLabels.get(selectedCategoryIdx));
-                    sb.append(TUIFormHelper.formatFieldRow("Category", catDisplay, focusedField == 2, 18, 50)).append("\n");
+                    sb.append(TUIFormHelper.formatFieldRow("Category", catDisplay, focusedField == 3, 18, 50)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
                     // ACTION Compartment
@@ -241,10 +179,10 @@ public class DepositScreen implements Screen {
                     String btn1 = "[1] Authorize & Accept Deposit";
                     String btn2 = "[2] Cancel & Return";
                     String actionLine;
-                    if (focusedField == 3) {
-                        actionLine = "  ▸ " + ConsoleTheme.highlight(btn1) + "                 " + btn2;
-                    } else if (focusedField == 4) {
+                    if (focusedField == 4 && actionIndex == 1) {
                         actionLine = "    " + btn1 + "               ▸ " + ConsoleTheme.highlight(btn2);
+                    } else if (focusedField == 4) {
+                        actionLine = "  ▸ " + ConsoleTheme.highlight(btn1) + "                 " + btn2;
                     } else {
                         actionLine = "  ▸ " + btn1 + "                 " + btn2;
                     }
@@ -258,7 +196,7 @@ public class DepositScreen implements Screen {
                     sb.append(TUIBox.line("Status: " + statusText, width)).append("\n");
 
                     sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Enter] Confirm / Action  •  [1/2] Action  •  [Esc] Cancel")).append("\n");
+                    sb.append(ConsoleTheme.keyGuide("[Tab/↓] Next Field  •  [Enter] Select Account  •  [1/2] Action  •  [Esc] Cancel")).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -273,25 +211,33 @@ public class DepositScreen implements Screen {
                     } else if (event.action() == KeyAction.SHIFT_TAB || event.action() == KeyAction.UP) {
                         focusedField = (focusedField - 1 + 5) % 5;
                     } else if (event.action() == KeyAction.LEFT) {
-                        if (focusedField == 4) {
-                            focusedField = 3;
+                        if (focusedField == 4 && actionIndex == 1) {
+                            actionIndex = 0;
                         }
                     } else if (event.action() == KeyAction.RIGHT) {
-                        if (focusedField == 3) {
-                            focusedField = 4;
+                        if (focusedField == 4 && actionIndex == 0) {
+                            actionIndex = 1;
                         }
                     } else if (event.action() == KeyAction.BACKSPACE) {
                         statusMessage = null;
                         isError = false;
-                        if (focusedField == 0 && amountBuf.length() > 0) {
+                        if (focusedField == 1 && amountBuf.length() > 0) {
                             amountBuf.deleteCharAt(amountBuf.length() - 1);
-                        } else if (focusedField == 1 && remarkBuf.length() > 0) {
+                        } else if (focusedField == 2 && remarkBuf.length() > 0) {
                             remarkBuf.deleteCharAt(remarkBuf.length() - 1);
                         }
                     } else if (event.action() == KeyAction.ENTER) {
                         statusMessage = null;
                         isError = false;
                         if (focusedField == 0) {
+                            AccountDTO selected = DepositAccountSelectorModal.selectAccount(
+                                    terminal, origAttr, reader, accounts, targetAccount, width);
+                            if (selected != null) {
+                                targetAccount = selected;
+                                focusedField = 1; // Auto advance to Deposit Amount
+                            }
+                            firstRender = true;
+                        } else if (focusedField == 1) {
                             if (amountBuf.length() > 0) {
                                 try {
                                     BigDecimal testAmt = new BigDecimal(amountBuf.toString().replace(",", "").replace("$", "").trim());
@@ -299,7 +245,7 @@ public class DepositScreen implements Screen {
                                         statusMessage = "Amount must be greater than zero.";
                                         isError = true;
                                     } else {
-                                        focusedField = 1;
+                                        focusedField = 2;
                                     }
                                 } catch (Exception e) {
                                     statusMessage = "Invalid numeric amount format.";
@@ -309,47 +255,49 @@ public class DepositScreen implements Screen {
                                 statusMessage = "Please enter deposit amount.";
                                 isError = true;
                             }
-                        } else if (focusedField == 1) {
+                        } else if (focusedField == 2) {
                             if (remarkBuf.toString().trim().isEmpty()) {
                                 remarkBuf.setLength(0);
                                 remarkBuf.append("Cash Deposit");
                             }
-                            focusedField = 2;
-                        } else if (focusedField == 2) {
+                            focusedField = 3;
+                        } else if (focusedField == 3) {
                             state = ScreenState.CATEGORY_SELECT;
                             categoryHighlightIdx = selectedCategoryIdx;
                             firstRender = true;
-                        } else if (focusedField == 3) {
-                            // [1] Authorize & Accept Deposit
-                            if (handleDepositAction(navigator, terminal, origAttr, reader, targetAccount,
-                                    amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, df, width)) {
+                        } else if (focusedField == 4) {
+                            if (actionIndex == 0) {
+                                // [1] Authorize & Accept Deposit
+                                if (handleDepositAction(navigator, terminal, origAttr, reader, targetAccount,
+                                        amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, width)) {
+                                    return;
+                                }
+                            } else {
+                                // [2] Cancel & Return
+                                terminal.setAttributes(origAttr);
+                                navigator.pop();
                                 return;
                             }
-                        } else if (focusedField == 4) {
-                            // [2] Cancel & Return
-                            terminal.setAttributes(origAttr);
-                            navigator.pop();
-                            return;
                         }
                     } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
                         char c = event.ch();
                         statusMessage = null;
                         isError = false;
-                        if (focusedField == 0) {
+                        if (focusedField == 1) {
                             if ((c >= '0' && c <= '9') || (c == '.' && !amountBuf.toString().contains("."))) {
                                 if (amountBuf.length() < 12) {
                                     amountBuf.append(c);
                                 }
                             }
-                        } else if (focusedField == 1) {
+                        } else if (focusedField == 2) {
                             if (remarkBuf.length() < 40) {
                                 remarkBuf.append(c);
                             }
-                        } else if (focusedField >= 2) {
+                        } else if (focusedField == 0 || focusedField >= 3) {
                             if (c == '1') {
                                 // Instant hotkey 1: Authorize & Accept Deposit
                                 if (handleDepositAction(navigator, terminal, origAttr, reader, targetAccount,
-                                        amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, df, width)) {
+                                        amountBuf, remarkBuf, selectedCategoryIdx, dbCategories, width)) {
                                     return;
                                 }
                             } else if (c == '2') {
@@ -382,7 +330,7 @@ public class DepositScreen implements Screen {
                     sb.append(TUIBox.emptyLine(width)).append("\n");
                     sb.append(TUIBox.divider(width)).append("\n");
                     sb.append(TUIBox.bottom(width)).append("\n");
-                    sb.append(ConsoleTheme.muted(" [↑/↓] Navigate  •  [Enter] Confirm Category  •  [0-8] Quick Select  •  [Esc] Skip")).append("\n");
+                    sb.append(ConsoleTheme.keyGuide("[↑/↓] Navigate  •  [Enter] Confirm Category  •  [0-8] Quick Select  •  [Esc] Skip")).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -399,13 +347,15 @@ public class DepositScreen implements Screen {
                         selectedCategoryIdx = categoryHighlightIdx;
                         categoryChosen = true;
                         state = ScreenState.FORM;
-                        focusedField = 3; // Shift focus to [1] Authorize & Accept Deposit
+                        focusedField = 4; // Shift focus to Action Bar
+                        actionIndex = 0;
                         firstRender = true;
                     } else if (event.action() == KeyAction.DIGIT && event.ch() >= '0' && event.ch() <= '8') {
                         selectedCategoryIdx = event.ch() - '0';
                         categoryChosen = true;
                         state = ScreenState.FORM;
-                        focusedField = 3; // Shift focus to [1] Authorize & Accept Deposit
+                        focusedField = 4; // Shift focus to Action Bar
+                        actionIndex = 0;
                         firstRender = true;
                     }
                 }
@@ -423,7 +373,7 @@ public class DepositScreen implements Screen {
                                         NonBlockingReader reader, AccountDTO targetAccount,
                                         StringBuilder amountBuf, StringBuilder remarkBuf,
                                         int selectedCategoryIdx, List<Category> dbCategories,
-                                        DecimalFormat df, int width) {
+                                        int width) {
         String amtStr = amountBuf.toString().replace(",", "").replace("$", "").trim();
         if (amtStr.isEmpty()) {
             return false;
@@ -458,7 +408,6 @@ public class DepositScreen implements Screen {
             catId = dbCategories.get(selectedCategoryIdx - 1).getCategoryId();
         }
 
-        DecimalFormat df = new DecimalFormat("#,##0.00");
         try {
             Transaction txn = accountController.deposit(
                     targetAccount.getAccountId(),
@@ -471,6 +420,9 @@ public class DepositScreen implements Screen {
 
             BigDecimal newBal = targetAccount.getBalance().add(amount);
 
+            String creditedFormatted = "+" + ConsoleFormatter.formatAccountBalance(amount, targetAccount.getCurrency());
+            String newBalFormatted = ConsoleFormatter.formatAccountBalance(newBal, targetAccount.getCurrency());
+
             StringBuilder succSb = new StringBuilder();
             succSb.append(TUIBox.top(width)).append("\n");
             succSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > CASH OPERATIONS > DEPOSIT COMPLETED"), width)).append("\n");
@@ -479,12 +431,12 @@ public class DepositScreen implements Screen {
             succSb.append(TUIBox.center(ConsoleTheme.success("✔ Deposit completed successfully!"), width)).append("\n");
             succSb.append(TUIBox.emptyLine(width)).append("\n");
             succSb.append(TUIBox.line("  Transaction ID:  #" + txn.getTransactionId(), width)).append("\n");
-            succSb.append(TUIBox.line("  Credited:        " + ConsoleTheme.success("+$ " + df.format(amount) + " " + targetAccount.getCurrency()), width)).append("\n");
-            succSb.append(TUIBox.line("  New Balance:     $ " + df.format(newBal) + " " + targetAccount.getCurrency(), width)).append("\n");
+            succSb.append(TUIBox.line("  Credited:        " + ConsoleTheme.success(creditedFormatted), width)).append("\n");
+            succSb.append(TUIBox.line("  New Balance:     " + newBalFormatted, width)).append("\n");
             succSb.append(TUIBox.emptyLine(width)).append("\n");
             succSb.append(TUIBox.divider(width)).append("\n");
             succSb.append(TUIBox.bottom(width)).append("\n");
-            succSb.append(ConsoleTheme.muted(" [Enter] Return to Main Menu  •  [Esc] Back")).append("\n");
+            succSb.append(ConsoleTheme.keyGuide("[Enter] Return to Main Menu  •  [Esc] Back")).append("\n");
 
             ScreenRenderer.render(succSb.toString(), true);
             while (true) {
@@ -508,7 +460,7 @@ public class DepositScreen implements Screen {
             errSb.append(TUIBox.line(ConsoleTheme.error(" " + errorMsg), width)).append("\n");
             errSb.append(TUIBox.divider(width)).append("\n");
             errSb.append(TUIBox.bottom(width)).append("\n");
-            errSb.append(ConsoleTheme.muted(" [Enter/Esc] Return to Menu")).append("\n");
+            errSb.append(ConsoleTheme.keyGuide("[Enter/Esc] Return to Menu")).append("\n");
             ScreenRenderer.render(errSb.toString(), true);
             while (true) {
                 KeyEvent doneEvt = TUIFormHelper.readKey(reader);

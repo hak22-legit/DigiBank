@@ -12,6 +12,7 @@ import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
 import com.bank.controller.AccountController;
 import com.bank.service.LiveCurrencyService;
+import com.bank.ui.Ansi;
 import com.bank.util.CurrencyConverter;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
@@ -103,16 +104,20 @@ public class ExchangeScreen implements Screen {
 
                 // Table Header & Divider
                 String tableHeader = String.format("  %-15s %-22s %22s", "Currency Code", "Name", "Spot Rate (1 USD)");
-                sb.append(TUIBox.line(tableHeader, width)).append("\n");
+                sb.append(TUIBox.line(Ansi.cyan(tableHeader), width)).append("\n");
                 sb.append(TUIBox.line("  " + "─".repeat(76), width)).append("\n");
 
                 // Table Rows
-                String khrLine = String.format("  %-15s %-22s %22s", "KHR", "Cambodian Riel", "៛ " + df.format(khrRate));
-                String eurLine = String.format("  %-15s %-22s %22s", "EUR", "Euro", "€ " + df.format(eurRate));
-                String jpyLine = String.format("  %-15s %-22s %22s", "JPY", "Japanese Yen", "¥ " + df.format(jpyRate));
-                sb.append(TUIBox.line(khrLine, width)).append("\n");
-                sb.append(TUIBox.line(eurLine, width)).append("\n");
-                sb.append(TUIBox.line(jpyLine, width)).append("\n");
+                String khrVal = "៛ " + df.format(khrRate);
+                String eurVal = "€ " + df.format(eurRate);
+                String jpyVal = "¥ " + df.format(jpyRate);
+
+                String khrLine = String.format("  %-15s %-22s %22s", "KHR", "Cambodian Riel", khrVal);
+                String eurLine = String.format("  %-15s %-22s %22s", "EUR", "Euro", eurVal);
+                String jpyLine = String.format("  %-15s %-22s %22s", "JPY", "Japanese Yen", jpyVal);
+                sb.append(TUIBox.line(khrLine.replace(khrVal, Ansi.cyan(khrVal)), width)).append("\n");
+                sb.append(TUIBox.line(eurLine.replace(eurVal, Ansi.cyan(eurVal)), width)).append("\n");
+                sb.append(TUIBox.line(jpyLine.replace(jpyVal, Ansi.cyan(jpyVal)), width)).append("\n");
                 sb.append(TUIBox.emptyLine(width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
 
@@ -129,10 +134,14 @@ public class ExchangeScreen implements Screen {
                 // Amount to Convert Field
                 String srcSymbol = getSymbol(sourceCurrency);
                 String displayAmt = srcSymbol + " " + amountBuf.toString() + (focusedField == 2 ? "|" : "");
-                String paddedAmt = String.format("%-53s", displayAmt);
-                String bracketAmt = (focusedField == 2) ? ConsoleTheme.highlight(paddedAmt) : paddedAmt;
-                String amtRow = String.format("  %-17s: [ %s ]", "Amount to Convert", bracketAmt);
-                sb.append(TUIBox.line(amtRow, width)).append("\n");
+                String plainAmtRow = String.format("  %-17s: [ %-49s ]", "Amount to Convert", displayAmt);
+                if (plainAmtRow.length() > 74) {
+                    plainAmtRow = plainAmtRow.substring(0, 74);
+                } else {
+                    plainAmtRow = String.format("%-74s", plainAmtRow);
+                }
+                String amtRendered = (focusedField == 2) ? ("\033[7m" + plainAmtRow + "\033[0m") : plainAmtRow;
+                sb.append(TUIBox.line(amtRendered, width)).append("\n");
 
                 // Simulator Divider
                 sb.append(TUIBox.line("  " + "─".repeat(76), width)).append("\n");
@@ -143,7 +152,7 @@ public class ExchangeScreen implements Screen {
                 String returnRow = String.format("  Estimated Return  :   %s", ConsoleTheme.highlight(returnStr));
                 sb.append(TUIBox.line(returnRow, width)).append("\n");
 
-                String feeRow = "  Applied Fee       :   $ 0.00 (Standard Tier - Zero Fee)";
+                String feeRow = "  Applied Fee       :   " + Ansi.green("$ 0.00") + " (Standard Tier - Zero Fee)";
                 sb.append(TUIBox.line(feeRow, width)).append("\n");
                 sb.append(TUIBox.emptyLine(width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
@@ -167,7 +176,7 @@ public class ExchangeScreen implements Screen {
                     sb.append(" ").append(statusFeedback).append("\n");
                     statusFeedback = null;
                 }
-                sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Space] Select Currency  •  [Enter] Action  •  [Esc] Back")).append("\n");
+                sb.append(ConsoleTheme.keyGuide("[Tab/↓] Next Field  •  [Space] Select Currency  •  [Enter] Action  •  [Esc] Back")).append("\n");
 
                 ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
@@ -324,15 +333,20 @@ public class ExchangeScreen implements Screen {
         for (int i = 0; i < CURRENCIES.length; i++) {
             String opt = (i == selectedIndex ? "(•) " : "( ) ") + CURRENCIES[i];
             if (i < CURRENCIES.length - 1) {
-                rsb.append(String.format("%-12s", opt));
+                rsb.append(String.format("%-14s", opt));
             } else {
                 rsb.append(opt);
             }
         }
-        String radioContent = String.format("%-53s", rsb.toString());
-        String bracketContent = isFocused ? ConsoleTheme.highlight(radioContent) : radioContent;
-        String row = String.format("  %-17s: [ %s ]", label, bracketContent);
-        return TUIBox.line(row, width);
+        // rsb is exactly 49 chars: "( ) USD       (•) KHR       ( ) EUR       ( ) JPY"
+        String plainContent = String.format("  %-17s: [ %-49s ]", label, rsb.toString());
+        if (plainContent.length() > 74) {
+            plainContent = plainContent.substring(0, 74);
+        } else {
+            plainContent = String.format("%-74s", plainContent);
+        }
+        String rendered = isFocused ? ("\033[7m" + plainContent + "\033[0m") : plainContent;
+        return TUIBox.line(rendered, width);
     }
 
     private String getSymbol(String currency) {

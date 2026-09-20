@@ -31,7 +31,9 @@ public class AuditLogService {
     }
 
     public PagedResult<AuditLog> getLogsPaginated(Admin requestingAdmin, int page, int pageSize) {
-        assertSuperAdmin(requestingAdmin);
+        if (requestingAdmin.getRole() != AdminRole.SUPER_ADMIN && requestingAdmin.getRole() != AdminRole.COMPLIANCE_OFFICER) {
+            throw new com.bank.exception.AccessDeniedException("Only SUPER_ADMIN and COMPLIANCE_OFFICER can view audit logs.");
+        }
 
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 10;
@@ -52,7 +54,9 @@ public class AuditLogService {
     }
 
     public List<AuditLog> getLogsForAdmin(Admin requestingAdmin, Long targetAdminId) {
-        assertSuperAdmin(requestingAdmin);
+        if (requestingAdmin.getRole() != AdminRole.SUPER_ADMIN && requestingAdmin.getRole() != AdminRole.COMPLIANCE_OFFICER) {
+            throw new com.bank.exception.AccessDeniedException("Only SUPER_ADMIN and COMPLIANCE_OFFICER can view audit logs.");
+        }
         return auditLogRepository.findByAdminId(targetAdminId);
     }
 

@@ -1,5 +1,6 @@
 package com.bank.model.repository;
 
+import com.bank.model.dto.UserDirectoryItem;
 import com.bank.model.entity.User;
 
 import java.util.List;
@@ -12,4 +13,7 @@ public interface UserRepository {
     List<User> findAll();
     User save(User user);
     boolean deleteById(Long userId);
+
+    List<UserDirectoryItem> findUserDirectorySummary(int offset, int limit);
+    long countUsers();
 }

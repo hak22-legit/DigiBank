@@ -77,6 +77,18 @@ public class AdminRepositoryImpl implements AdminRepository {
         return admins;
     }
 
+    static {
+        ensureSchemaAligned();
+    }
+
+    private static void ensureSchemaAligned() {
+        try (Connection conn = DatabaseConnection.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS email VARCHAR(120)");
+            stmt.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30)");
+        } catch (Exception ignored) {}
+    }
+
     @Override
     public Admin save(Admin admin) {
         return admin.getAdminId() == null ? insert(admin) : update(admin);
@@ -84,9 +96,9 @@ public class AdminRepositoryImpl implements AdminRepository {
 
     private Admin insert(Admin admin) {
         String sql = """
-        INSERT INTO admins (username, email, password_hash, full_name, role, status,
+        INSERT INTO admins (username, email, password_hash, full_name, phone_number, role, status,
                              security_question, security_answer_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING admin_id
         """;
 
@@ -98,12 +110,13 @@ public class AdminRepositoryImpl implements AdminRepository {
             stmt.setString(2, admin.getEmail());
             stmt.setString(3, admin.getPasswordHash());
             stmt.setString(4, admin.getFullName());
-            stmt.setString(5, admin.getRole().name());
-            stmt.setString(6, admin.getStatus().name());
-            stmt.setString(7, admin.getSecurityQuestion());
-            stmt.setString(8, admin.getSecurityAnswerHash());
-            stmt.setTimestamp(9, Timestamp.valueOf(now));
+            stmt.setString(5, admin.getPhoneNumber());
+            stmt.setString(6, admin.getRole().name());
+            stmt.setString(7, admin.getStatus().name());
+            stmt.setString(8, admin.getSecurityQuestion());
+            stmt.setString(9, admin.getSecurityAnswerHash());
             stmt.setTimestamp(10, Timestamp.valueOf(now));
+            stmt.setTimestamp(11, Timestamp.valueOf(now));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -121,7 +134,7 @@ public class AdminRepositoryImpl implements AdminRepository {
     private Admin update(Admin admin) {
         String sql = """
         UPDATE admins
-        SET username = ?, email = ?, password_hash = ?, full_name = ?,
+        SET username = ?, email = ?, password_hash = ?, full_name = ?, phone_number = ?,
             role = ?, status = ?, security_question = ?, security_answer_hash = ?, updated_at = ?
         WHERE admin_id = ?
         """;
@@ -134,12 +147,13 @@ public class AdminRepositoryImpl implements AdminRepository {
             stmt.setString(2, admin.getEmail());
             stmt.setString(3, admin.getPasswordHash());
             stmt.setString(4, admin.getFullName());
-            stmt.setString(5, admin.getRole().name());
-            stmt.setString(6, admin.getStatus().name());
-            stmt.setString(7, admin.getSecurityQuestion());
-            stmt.setString(8, admin.getSecurityAnswerHash());
-            stmt.setTimestamp(9, Timestamp.valueOf(now));
-            stmt.setLong(10, admin.getAdminId());
+            stmt.setString(5, admin.getPhoneNumber());
+            stmt.setString(6, admin.getRole().name());
+            stmt.setString(7, admin.getStatus().name());
+            stmt.setString(8, admin.getSecurityQuestion());
+            stmt.setString(9, admin.getSecurityAnswerHash());
+            stmt.setTimestamp(10, Timestamp.valueOf(now));
+            stmt.setLong(11, admin.getAdminId());
 
             stmt.executeUpdate();
             admin.setUpdatedAt(now);
@@ -163,12 +177,18 @@ public class AdminRepositoryImpl implements AdminRepository {
     }
 
     private Admin mapRow(ResultSet rs) throws SQLException {
+        String phone = null;
+        try {
+            phone = rs.getString("phone_number");
+        } catch (SQLException ignored) {}
+
         return Admin.builder()
                 .adminId(rs.getLong("admin_id"))
                 .username(rs.getString("username"))
                 .email(rs.getString("email"))
                 .passwordHash(rs.getString("password_hash"))
                 .fullName(rs.getString("full_name"))
+                .phoneNumber(phone)
                 .role(AdminRole.valueOf(rs.getString("role")))
                 .status(AdminStatus.valueOf(rs.getString("status")))
                 .securityQuestion(rs.getString("security_question"))

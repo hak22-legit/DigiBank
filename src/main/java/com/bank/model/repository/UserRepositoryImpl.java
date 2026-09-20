@@ -1,6 +1,7 @@
 package com.bank.model.repository;
 
 import com.bank.database.DatabaseConnection;
+import com.bank.model.dto.UserDirectoryItem;
 import com.bank.model.enums.UserStatus;
 import com.bank.model.entity.User;
 
@@ -168,5 +169,58 @@ public class UserRepositoryImpl implements UserRepository {
                 .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                 .updatedAt(rs.getTimestamp("updated_at").toLocalDateTime())
                 .build();
+    }
+
+    @Override
+    public List<UserDirectoryItem> findUserDirectorySummary(int offset, int limit) {
+        String sql = """
+            SELECT u.user_id, u.username, u.full_name, u.status,
+                   COUNT(a.account_id) AS account_count,
+                   COALESCE(SUM(a.balance), 0) AS total_balance
+            FROM users u
+            LEFT JOIN accounts a ON u.user_id = a.user_id
+            GROUP BY u.user_id, u.username, u.full_name, u.status
+            ORDER BY u.user_id ASC
+            LIMIT ? OFFSET ?
+            """;
+
+        List<UserDirectoryItem> list = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, limit > 0 ? limit : 10);
+            stmt.setInt(2, Math.max(0, offset));
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(UserDirectoryItem.builder()
+                            .userId(rs.getLong("user_id"))
+                            .username(rs.getString("username"))
+                            .fullName(rs.getString("full_name"))
+                            .status(UserStatus.valueOf(rs.getString("status")))
+                            .accountCount(rs.getInt("account_count"))
+                            .totalBalance(rs.getBigDecimal("total_balance"))
+                            .build());
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error fetching user directory summary", e);
+        }
+        return list;
+    }
+
+    @Override
+    public long countUsers() {
+        String sql = "SELECT COUNT(*) FROM users";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) {
+                return rs.getLong(1);
+            }
+            return 0;
+        } catch (SQLException e) {
+            throw new RuntimeException("Error counting users", e);
+        }
     }
 }

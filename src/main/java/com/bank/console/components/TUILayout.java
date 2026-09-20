@@ -93,6 +93,14 @@ public final class TUILayout {
         System.out.print(indentLines(footer(hints)));
     }
 
+    public static String keyGuide(String guideContent) {
+        return com.bank.ui.Ansi.keyGuide(guideContent);
+    }
+
+    public static void printKeyGuide(String guideContent) {
+        com.bank.ui.Ansi.printKeyGuide(guideContent);
+    }
+
     public static String alert(String message, boolean isError) {
         int width = getWidth();
         String alertText = isError ? ConsoleTheme.error("✗ " + message) : ConsoleTheme.success("✔ " + message);

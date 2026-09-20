@@ -11,9 +11,24 @@ import java.util.Optional;
 
 public class AuditLogRepositoryImpl implements AuditLogRepository {
 
+    private static final String BASE_SELECT = """
+        SELECT 
+            a.audit_id,
+            a.admin_id,
+            COALESCE(adm.username, CAST(a.admin_id AS text)) AS actor_name,
+            a.action,
+            a.target_table,
+            a.target_id,
+            a.details,
+            a.ip_address,
+            a.created_at
+        FROM audit_logs a
+        LEFT JOIN admins adm ON a.admin_id = adm.admin_id
+        """;
+
     @Override
     public Optional<AuditLog> findById(Long logId) {
-        String sql = "SELECT * FROM audit_logs WHERE audit_id = ?";
+        String sql = BASE_SELECT + " WHERE a.audit_id = ?";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
@@ -29,7 +44,7 @@ public class AuditLogRepositoryImpl implements AuditLogRepository {
 
     @Override
     public List<AuditLog> findByAdminId(Long adminId) {
-        String sql = "SELECT * FROM audit_logs WHERE admin_id = ? ORDER BY created_at DESC";
+        String sql = BASE_SELECT + " WHERE a.admin_id = ? ORDER BY a.created_at DESC";
         List<AuditLog> logs = new ArrayList<>();
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -47,7 +62,7 @@ public class AuditLogRepositoryImpl implements AuditLogRepository {
 
     @Override
     public List<AuditLog> findAll() {
-        String sql = "SELECT * FROM audit_logs ORDER BY created_at DESC";
+        String sql = BASE_SELECT + " ORDER BY a.created_at DESC";
         List<AuditLog> logs = new ArrayList<>();
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -108,7 +123,7 @@ public class AuditLogRepositoryImpl implements AuditLogRepository {
 
     @Override
     public List<AuditLog> findPaginated(int offset, int limit) {
-        String sql = "SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT ? OFFSET ?";
+        String sql = BASE_SELECT + " ORDER BY a.created_at DESC LIMIT ? OFFSET ?";
         List<AuditLog> logs = new ArrayList<>();
 
         try (Connection conn = DatabaseConnection.getConnection();
@@ -142,10 +157,15 @@ public class AuditLogRepositoryImpl implements AuditLogRepository {
     private AuditLog mapRow(ResultSet rs) throws SQLException {
         Long adminId = rs.getObject("admin_id") != null ? rs.getLong("admin_id") : null;
         Long targetId = rs.getObject("target_id") != null ? rs.getLong("target_id") : null;
+        String actorName = null;
+        try {
+            actorName = rs.getString("actor_name");
+        } catch (SQLException ignored) {}
 
         return AuditLog.builder()
                 .logId(rs.getLong("audit_id"))
                 .adminId(adminId)
+                .actorName(actorName)
                 .action(rs.getString("action"))
                 .targetTable(rs.getString("target_table"))
                 .targetId(targetId)

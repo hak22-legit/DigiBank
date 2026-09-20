@@ -207,4 +207,68 @@ public class TransactionRepositoryImpl implements TransactionRepository {
                 .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                 .build();
     }
+
+    @Override
+    public List<com.bank.model.dto.TransactionSummaryDTO> getRecentUserActivity(int userId, int limit) {
+        return getRecentUserActivity((long) userId, limit);
+    }
+
+    @Override
+    public List<com.bank.model.dto.TransactionSummaryDTO> getRecentUserActivity(Long userId, int limit) {
+        String sql = """
+            SELECT 
+                t.transaction_id,
+                t.created_at,
+                t.transaction_type,
+                t.amount,
+                t.currency,
+                COALESCE(
+                    CASE 
+                        WHEN t.related_account_id IS NOT NULL THEN 'DGB-' || LPAD(t.related_account_id::text, 9, '0')
+                        WHEN t.description IS NOT NULL AND t.description <> '' THEN t.description
+                        ELSE 'N/A'
+                    END,
+                    'N/A'
+                ) AS destination,
+                CASE 
+                    WHEN EXISTS (
+                        SELECT 1 FROM fraud_alerts fa 
+                        WHERE fa.transaction_id = t.transaction_id 
+                          AND fa.status IN ('OPEN', 'INVESTIGATING', 'PENDING', 'UNDER_INVESTIGATION')
+                    ) THEN 'FLAGGED'
+                    WHEN t.status = 'COMPLETED' THEN 'CLEARED'
+                    ELSE t.status
+                END AS status
+            FROM transactions t
+            JOIN accounts a ON t.account_id = a.account_id
+            WHERE a.user_id = ?
+            ORDER BY t.created_at DESC
+            LIMIT ?;
+        """;
+
+        List<com.bank.model.dto.TransactionSummaryDTO> list = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, userId);
+            stmt.setInt(2, limit);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(com.bank.model.dto.TransactionSummaryDTO.builder()
+                            .transactionId(rs.getLong("transaction_id"))
+                            .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
+                            .transactionType(rs.getString("transaction_type"))
+                            .amount(rs.getBigDecimal("amount"))
+                            .currency(rs.getString("currency"))
+                            .destination(rs.getString("destination"))
+                            .status(rs.getString("status"))
+                            .build());
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error fetching recent user transaction activity for user: " + userId, e);
+        }
+        return list;
+    }
 }

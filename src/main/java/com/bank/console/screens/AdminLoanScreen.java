@@ -91,7 +91,7 @@ public class AdminLoanScreen implements Screen {
                         String statusDisplay = isErrorStatus ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage);
                         sb.append(" Status: ").append(statusDisplay).append("\n");
                     }
-                    sb.append(ConsoleTheme.muted("  [Enter/Esc] Return to Admin Dashboard")).append("\n");
+                    sb.append(ConsoleTheme.keyGuide("[Enter/Esc] Return to Admin Dashboard")).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -201,7 +201,7 @@ public class AdminLoanScreen implements Screen {
                     String statusDisplay = isErrorStatus ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage);
                     sb.append(" Status: ").append(statusDisplay).append("\n");
                 }
-                sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [A/R/N/P] Quick Action  •  [Esc] Back")).append("\n");
+                sb.append(ConsoleTheme.keyGuide("[↑/↓] Navigate  •  [Enter] Select  •  [A/R/N/P] Quick Action  •  [Esc] Back")).append("\n");
 
                 ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;

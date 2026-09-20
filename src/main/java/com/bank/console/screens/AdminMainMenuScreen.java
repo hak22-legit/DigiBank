@@ -63,7 +63,8 @@ public class AdminMainMenuScreen implements Screen {
                 .addItem("03", "Loan Management", "Loan underwriting and approval queue")
                 .addItem("04", "Fraud & Security", "Investigate alerts and freeze/unfreeze accounts")
                 .addItem("05", "Audit Logs", "Review immutable system audit trail")
-                .addItem("06", "Logout", "Securely sign out of administrative terminal");
+                .addItem("06", "Staff Credentials", "Reset staff credentials and unlock accounts")
+                .addItem("07", "Logout", "Securely sign out of administrative terminal");
         }
 
         ConsoleMenu.MenuItem selected = menu.select();
@@ -72,7 +73,7 @@ public class AdminMainMenuScreen implements Screen {
         boolean isLogout = selected == null ||
                 (role == AdminRole.LOAN_OFFICER && "03".equals(selected.getCode())) ||
                 (role == AdminRole.COMPLIANCE_OFFICER && "04".equals(selected.getCode())) ||
-                (role == AdminRole.SUPER_ADMIN && "06".equals(selected.getCode()));
+                (role == AdminRole.SUPER_ADMIN && "07".equals(selected.getCode()));
 
         if (isLogout) {
             boolean confirm = ConsolePrompt.promptConfirmation("Are you sure you want to sign out of the Admin Portal?");
@@ -98,11 +99,12 @@ public class AdminMainMenuScreen implements Screen {
         } else {
             // SUPER_ADMIN
             switch (selected.getCode()) {
-                case "01" -> navigator.push(new AdminDashboardScreen());
-                case "02" -> navigator.push(new AdminUserManagementScreen());
-                case "03" -> navigator.push(new AdminLoanScreen());
+                case "01" -> navigator.push(new SuperAdminDashboardScreen());
+                case "02" -> navigator.push(new UserDirectoryScreen());
+                case "03" -> navigator.push(new LoanUnderwritingScreen());
                 case "04" -> navigator.push(new AdminFraudScreen());
-                case "05" -> navigator.push(new AdminAuditLogScreen());
+                case "05" -> navigator.push(new AuditLogScreen());
+                case "06" -> navigator.push(new StaffResetCredentialsScreen());
             }
         }
     }

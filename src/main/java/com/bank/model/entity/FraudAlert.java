@@ -28,4 +28,8 @@ public class FraudAlert {
     private String resolutionNotes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public Long getId() {
+        return alertId;
+    }
 }

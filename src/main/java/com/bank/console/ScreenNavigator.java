@@ -42,6 +42,13 @@ public class ScreenNavigator {
         return screenStack.isEmpty();
     }
 
+    public void replace(Screen screen) {
+        if (!screenStack.isEmpty()) {
+            screenStack.pop();
+        }
+        push(screen);
+    }
+
     public void clearAndPush(Screen screen) {
         screenStack.clear();
         push(screen);

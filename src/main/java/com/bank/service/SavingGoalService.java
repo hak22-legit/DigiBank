@@ -63,8 +63,8 @@ public class SavingGoalService {
 
         SavingGoal goal = getGoalById(goalId, requestingUser);
 
-        if (goal.getStatus() != GoalStatus.ACTIVE) {
-            throw new IllegalStateException("Cannot contribute to a goal with status: " + goal.getStatus());
+        if (goal.getStatus() == GoalStatus.CANCELLED) {
+            throw new IllegalStateException("Cannot contribute to a cancelled goal");
         }
 
         BigDecimal newAmount = goal.getCurrentAmount().add(amount);
@@ -85,6 +85,51 @@ public class SavingGoalService {
         return goal.getCurrentAmount()
                 .divide(goal.getTargetAmount(), 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100));
+    }
+
+    public SavingGoal updateGoal(Long goalId, String name, BigDecimal targetAmount, LocalDate deadline, User requestingUser) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Goal name cannot be empty");
+        }
+        if (targetAmount == null || targetAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidAmountException("Target amount must be greater than zero");
+        }
+
+        SavingGoal goal = getGoalById(goalId, requestingUser);
+        goal.setName(name.trim());
+        goal.setTargetAmount(targetAmount);
+        goal.setDeadline(deadline);
+
+        if (goal.getCurrentAmount() != null && goal.getCurrentAmount().compareTo(targetAmount) >= 0) {
+            goal.setStatus(GoalStatus.COMPLETED);
+        } else if (goal.getStatus() == GoalStatus.COMPLETED) {
+            goal.setStatus(GoalStatus.ACTIVE);
+        }
+
+        goal.setUpdatedAt(LocalDateTime.now());
+        return savingGoalRepository.save(goal);
+    }
+
+    public SavingGoal withdrawFromGoal(Long goalId, BigDecimal amount, User requestingUser) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new InvalidAmountException("Withdrawal amount must be greater than zero");
+        }
+
+        SavingGoal goal = getGoalById(goalId, requestingUser);
+
+        if (goal.getCurrentAmount() == null || goal.getCurrentAmount().compareTo(amount) < 0) {
+            throw new InvalidAmountException("Insufficient funds in saving goal to withdraw");
+        }
+
+        BigDecimal newAmount = goal.getCurrentAmount().subtract(amount);
+        goal.setCurrentAmount(newAmount);
+
+        if (newAmount.compareTo(goal.getTargetAmount()) < 0 && goal.getStatus() == GoalStatus.COMPLETED) {
+            goal.setStatus(GoalStatus.ACTIVE);
+        }
+
+        goal.setUpdatedAt(LocalDateTime.now());
+        return savingGoalRepository.save(goal);
     }
 
     public void cancelGoal(Long goalId, User requestingUser) {

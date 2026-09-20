@@ -67,11 +67,39 @@ public class BudgetService {
     /**
      * Returns all of a user's budgets, each enriched with actual spending
      * for that category within the budget's date range, and a usage status.
+     * Batch-fetches transactions across all accounts once to eliminate N*M database roundtrips.
      */
     public List<BudgetView> getBudgetsWithUsage(User user) {
         List<Budget> budgets = budgetRepository.findByUserId(user.getUserId());
+        if (budgets == null || budgets.isEmpty()) {
+            return List.of();
+        }
+
+        List<Account> accounts = accountRepository.findByUserId(user.getUserId());
+        if (accounts == null || accounts.isEmpty()) {
+            return budgets.stream()
+                    .map(b -> calculateBudgetView(b, BigDecimal.ZERO))
+                    .collect(Collectors.toList());
+        }
+
+        LocalDateTime overallStart = budgets.stream()
+                .map(b -> b.getStartDate().atStartOfDay())
+                .min(LocalDateTime::compareTo)
+                .orElse(LocalDate.now().withDayOfMonth(1).atStartOfDay());
+
+        LocalDateTime overallEnd = budgets.stream()
+                .map(b -> b.getEndDate() != null ? b.getEndDate().atTime(23, 59, 59) : LocalDateTime.now())
+                .max(LocalDateTime::compareTo)
+                .orElse(LocalDateTime.now());
+
+        // Batch fetch all OUTCOME transactions across user's accounts within overall date window once
+        List<TransactionView> allTransactions = accounts.stream()
+                .flatMap(acc -> transactionService.getTransactionHistory(
+                        acc.getAccountId(), HistoryFilter.OUTCOME, overallStart, overallEnd, user).stream())
+                .collect(Collectors.toList());
+
         return budgets.stream()
-                .map(budget -> buildBudgetView(budget, user))
+                .map(budget -> buildBudgetViewWithTransactions(budget, allTransactions))
                 .collect(Collectors.toList());
     }
 
@@ -92,22 +120,43 @@ public class BudgetService {
                 ? budget.getEndDate().atTime(23, 59, 59)
                 : LocalDateTime.now();
 
-        // Sum all OUTCOME transactions in this category, across all of the
-        // user's accounts, within the budget's date range.
         List<Account> accounts = accountRepository.findByUserId(user.getUserId());
 
         BigDecimal actualSpending = accounts.stream()
                 .flatMap(acc -> transactionService.getTransactionHistory(
                         acc.getAccountId(), HistoryFilter.OUTCOME, rangeStart, rangeEnd, user).stream())
-                .filter(v -> budget.getCategoryId().equals(v.getTransaction().getCategoryId()))
+                .filter(v -> v.getTransaction() != null && budget.getCategoryId().equals(v.getTransaction().getCategoryId()))
                 .map(v -> v.getTransaction().getAmount())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal remaining = budget.getAmountLimit().subtract(actualSpending);
+        return calculateBudgetView(budget, actualSpending);
+    }
+
+    private BudgetView buildBudgetViewWithTransactions(Budget budget, List<TransactionView> allTransactions) {
+        LocalDateTime rangeStart = budget.getStartDate().atStartOfDay();
+        LocalDateTime rangeEnd = budget.getEndDate() != null
+                ? budget.getEndDate().atTime(23, 59, 59)
+                : LocalDateTime.now();
+
+        BigDecimal actualSpending = allTransactions.stream()
+                .filter(v -> v.getTransaction() != null
+                        && budget.getCategoryId().equals(v.getTransaction().getCategoryId())
+                        && v.getTransaction().getCreatedAt() != null
+                        && !v.getTransaction().getCreatedAt().isBefore(rangeStart)
+                        && !v.getTransaction().getCreatedAt().isAfter(rangeEnd))
+                .map(v -> v.getTransaction().getAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return calculateBudgetView(budget, actualSpending);
+    }
+
+    private BudgetView calculateBudgetView(Budget budget, BigDecimal actualSpending) {
+        BigDecimal spending = actualSpending != null ? actualSpending : BigDecimal.ZERO;
+        BigDecimal remaining = budget.getAmountLimit().subtract(spending);
 
         BigDecimal usagePercentage = BigDecimal.ZERO;
         if (budget.getAmountLimit().compareTo(BigDecimal.ZERO) > 0) {
-            usagePercentage = actualSpending
+            usagePercentage = spending
                     .divide(budget.getAmountLimit(), 4, RoundingMode.HALF_UP)
                     .multiply(BigDecimal.valueOf(100));
         }
@@ -123,10 +172,21 @@ public class BudgetService {
 
         return BudgetView.builder()
                 .budget(budget)
-                .actualSpending(actualSpending)
+                .actualSpending(spending)
                 .remainingAmount(remaining)
                 .usagePercentage(usagePercentage)
                 .status(status)
                 .build();
+    }
+
+    public boolean deleteBudget(Long budgetId, User user) {
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new BudgetNotFoundException("Budget not found: " + budgetId));
+
+        if (!budget.getUserId().equals(user.getUserId())) {
+            throw new UnauthorizedException("You do not have access to this budget");
+        }
+
+        return budgetRepository.deleteById(budgetId);
     }
 }

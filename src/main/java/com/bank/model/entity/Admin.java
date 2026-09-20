@@ -19,6 +19,7 @@ public class Admin {
     private String email;
     private String passwordHash;
     private String fullName;
+    private String phoneNumber;
     private AdminRole role;
     private AdminStatus status;
     private String securityQuestion;

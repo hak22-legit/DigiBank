@@ -3,7 +3,6 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
-import com.bank.console.components.ConsoleFormatter;
 import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUIFormHelper;
@@ -13,23 +12,19 @@ import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
 import com.bank.controller.AuthController;
 import com.bank.model.dto.UserDTO;
-import com.bank.model.entity.Account;
-import com.bank.model.entity.User;
-import com.bank.model.enums.AccountType;
 import com.bank.model.enums.Currency;
+import com.bank.security.PasswordValidator;
+import com.bank.security.PasswordValidator.PasswordEvaluation;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
 
 import java.io.IOException;
-import java.math.BigDecimal;
-import java.util.List;
-import java.util.Optional;
 
 /**
- * SCREEN 3: CUSTOMER REGISTRATION (OPEN ACCOUNT) (82 Columns)
- * Interactive keyboard form navigation, radio button toggling, masked password entry,
- * strict 82-column enclosed container, and zero console prompt leaks.
+ * SCREEN 3: CUSTOMER REGISTRATION (82 Columns)
+ * Enclosed 82-column TUI registration form with zero CLI leaks, simplified onboarding,
+ * real-time enterprise password strength meter, rule checklist, and primary currency auto-provisioning.
  */
 public class RegisterScreen implements Screen {
     private final AuthController authController;
@@ -53,24 +48,24 @@ public class RegisterScreen implements Screen {
         Attributes origAttributes = terminal.enterRawMode();
         NonBlockingReader reader = terminal.reader();
 
-        // 8 editable fields (0..7) + 2 action buttons (8: Submit, 9: Cancel)
+        // 8 interactive fields (0..6 input, 7 action buttons)
         int focusedField = 0;
+        int actionIdx = 0; // 0: Create Bank Profile, 1: Cancel & Return
 
         StringBuilder fullNameBuf = new StringBuilder();
-        StringBuilder usernameBuf = new StringBuilder();
-        StringBuilder emailBuf = new StringBuilder();
         StringBuilder phoneBuf = new StringBuilder();
+        StringBuilder emailBuf = new StringBuilder();
+        StringBuilder usernameBuf = new StringBuilder();
         StringBuilder passwordBuf = new StringBuilder();
-        AccountType accountType = AccountType.SAVINGS;
-        Currency currency = Currency.USD;
-        StringBuilder depositBuf = new StringBuilder("100.00");
+        StringBuilder confirmPasswordBuf = new StringBuilder();
+        int currencyIdx = 0; // 0: USD, 1: KHR
 
         boolean firstRender = true;
 
         try {
             while (true) {
-                renderScreen(width, focusedField, fullNameBuf, usernameBuf, emailBuf,
-                        phoneBuf, passwordBuf, accountType, currency, depositBuf, firstRender);
+                renderScreen(width, focusedField, actionIdx, fullNameBuf, phoneBuf, emailBuf,
+                        usernameBuf, passwordBuf, confirmPasswordBuf, currencyIdx, firstRender);
                 firstRender = false;
 
                 KeyEvent event = TUIFormHelper.readKey(reader);
@@ -82,113 +77,102 @@ public class RegisterScreen implements Screen {
                     return;
                 }
 
-                // Field cycling: Tab, Down, Shift+Tab, Up
+                // TAB / DOWN: Advance field
                 if (event.action() == KeyAction.TAB || event.action() == KeyAction.DOWN) {
-                    focusedField = (focusedField + 1) % 10;
-                    statusMessage = null;
-                    continue;
-                } else if (event.action() == KeyAction.SHIFT_TAB || event.action() == KeyAction.UP) {
-                    focusedField = (focusedField - 1 + 10) % 10;
+                    focusedField = (focusedField + 1) % 8;
                     statusMessage = null;
                     continue;
                 }
 
-                // Left & Right arrow handling
+                // SHIFT_TAB / UP: Previous field
+                if (event.action() == KeyAction.SHIFT_TAB || event.action() == KeyAction.UP) {
+                    focusedField = (focusedField - 1 + 8) % 8;
+                    statusMessage = null;
+                    continue;
+                }
+
+                // LEFT / RIGHT Arrow Navigation
                 if (event.action() == KeyAction.LEFT) {
-                    if (focusedField == 5) {
-                        accountType = (accountType == AccountType.SAVINGS) ? AccountType.CHECKING : AccountType.SAVINGS;
-                    } else if (focusedField == 6) {
-                        currency = (currency == Currency.USD) ? Currency.KHR : Currency.USD;
-                    } else if (focusedField == 9) {
-                        focusedField = 8;
+                    if (focusedField == 6) {
+                        currencyIdx = (currencyIdx == 0) ? 1 : 0;
+                    } else if (focusedField == 7) {
+                        actionIdx = 0;
                     }
                     continue;
                 } else if (event.action() == KeyAction.RIGHT) {
-                    if (focusedField == 5) {
-                        accountType = (accountType == AccountType.SAVINGS) ? AccountType.CHECKING : AccountType.SAVINGS;
-                    } else if (focusedField == 6) {
-                        currency = (currency == Currency.USD) ? Currency.KHR : Currency.USD;
-                    } else if (focusedField == 8) {
-                        focusedField = 9;
+                    if (focusedField == 6) {
+                        currencyIdx = (currencyIdx == 0) ? 1 : 0;
+                    } else if (focusedField == 7) {
+                        actionIdx = 1;
                     }
                     continue;
                 }
 
-                // Spacebar toggling for radio buttons or text space
+                // SPACEBAR toggle
                 if (event.action() == KeyAction.CHAR && event.ch() == ' ') {
-                    if (focusedField == 5) {
-                        accountType = (accountType == AccountType.SAVINGS) ? AccountType.CHECKING : AccountType.SAVINGS;
-                        continue;
-                    } else if (focusedField == 6) {
-                        currency = (currency == Currency.USD) ? Currency.KHR : Currency.USD;
+                    if (focusedField == 6) {
+                        currencyIdx = (currencyIdx == 0) ? 1 : 0;
                         continue;
                     } else if (focusedField == 0) {
-                        if (fullNameBuf.length() < 45) {
-                            fullNameBuf.append(' ');
-                        }
+                        if (fullNameBuf.length() < 45) fullNameBuf.append(' ');
                         statusMessage = null;
                         continue;
-                    } else if (focusedField == 3) {
-                        if (phoneBuf.length() < 20) {
-                            phoneBuf.append(' ');
-                        }
+                    } else if (focusedField == 1) {
+                        if (phoneBuf.length() < 20) phoneBuf.append(' ');
                         statusMessage = null;
                         continue;
                     }
                 }
 
-                // Backspace handling
+                // BACKSPACE handling
                 if (event.action() == KeyAction.BACKSPACE) {
                     statusMessage = null;
                     switch (focusedField) {
                         case 0 -> { if (fullNameBuf.length() > 0) fullNameBuf.deleteCharAt(fullNameBuf.length() - 1); }
-                        case 1 -> { if (usernameBuf.length() > 0) usernameBuf.deleteCharAt(usernameBuf.length() - 1); }
+                        case 1 -> { if (phoneBuf.length() > 0) phoneBuf.deleteCharAt(phoneBuf.length() - 1); }
                         case 2 -> { if (emailBuf.length() > 0) emailBuf.deleteCharAt(emailBuf.length() - 1); }
-                        case 3 -> { if (phoneBuf.length() > 0) phoneBuf.deleteCharAt(phoneBuf.length() - 1); }
+                        case 3 -> { if (usernameBuf.length() > 0) usernameBuf.deleteCharAt(usernameBuf.length() - 1); }
                         case 4 -> { if (passwordBuf.length() > 0) passwordBuf.deleteCharAt(passwordBuf.length() - 1); }
-                        case 7 -> { if (depositBuf.length() > 0) depositBuf.deleteCharAt(depositBuf.length() - 1); }
+                        case 5 -> { if (confirmPasswordBuf.length() > 0) confirmPasswordBuf.deleteCharAt(confirmPasswordBuf.length() - 1); }
                     }
                     continue;
                 }
 
-                // Enter handling: advance to next field or trigger action
+                // ENTER key handling
                 if (event.action() == KeyAction.ENTER) {
-                    if (focusedField < 7) {
+                    if (focusedField < 6) {
                         focusedField++;
+                    } else if (focusedField == 6) {
+                        currencyIdx = (currencyIdx == 0) ? 1 : 0;
                     } else if (focusedField == 7) {
-                        focusedField = 8;
-                    } else if (focusedField == 8) {
-                        boolean success = submitRegistration(terminal, origAttributes, reader, navigator, session,
-                                fullNameBuf.toString(), usernameBuf.toString(), emailBuf.toString(),
-                                phoneBuf.toString(), passwordBuf.toString(), accountType, currency, depositBuf.toString());
-                        if (success) {
+                        if (actionIdx == 0) {
+                            boolean ok = submitRegistration(terminal, origAttributes, reader, navigator, session,
+                                    fullNameBuf.toString(), phoneBuf.toString(), emailBuf.toString(),
+                                    usernameBuf.toString(), passwordBuf.toString(), confirmPasswordBuf.toString(),
+                                    (currencyIdx == 0 ? Currency.USD : Currency.KHR));
+                            if (ok) return;
+                        } else {
+                            terminal.setAttributes(origAttributes);
+                            navigator.pop();
                             return;
                         }
-                    } else if (focusedField == 9) {
-                        terminal.setAttributes(origAttributes);
-                        navigator.pop();
-                        return;
                     }
                     continue;
                 }
 
-                // Hotkeys '1' and '2' for radio options or action buttons
+                // Hotkeys '1' and '2'
                 if ((event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) && (event.ch() == '1' || event.ch() == '2')) {
-                    if (focusedField == 5) {
-                        accountType = (event.ch() == '1') ? AccountType.SAVINGS : AccountType.CHECKING;
+                    if (focusedField == 6) {
+                        currencyIdx = (event.ch() == '1') ? 0 : 1;
                         continue;
-                    } else if (focusedField == 6) {
-                        currency = (event.ch() == '1') ? Currency.USD : Currency.KHR;
-                        continue;
-                    } else if (focusedField == 8 || focusedField == 9) {
+                    } else if (focusedField == 7) {
                         if (event.ch() == '1') {
-                            focusedField = 8;
-                            boolean success = submitRegistration(terminal, origAttributes, reader, navigator, session,
-                                    fullNameBuf.toString(), usernameBuf.toString(), emailBuf.toString(),
-                                    phoneBuf.toString(), passwordBuf.toString(), accountType, currency, depositBuf.toString());
-                            if (success) {
-                                return;
-                            }
+                            actionIdx = 0;
+                            boolean ok = submitRegistration(terminal, origAttributes, reader, navigator, session,
+                                    fullNameBuf.toString(), phoneBuf.toString(), emailBuf.toString(),
+                                    usernameBuf.toString(), passwordBuf.toString(), confirmPasswordBuf.toString(),
+                                    (currencyIdx == 0 ? Currency.USD : Currency.KHR));
+                            if (ok) return;
                         } else {
                             terminal.setAttributes(origAttributes);
                             navigator.pop();
@@ -198,7 +182,7 @@ public class RegisterScreen implements Screen {
                     }
                 }
 
-                // Character and digit typing
+                // Typing characters and digits
                 if (event.action() == KeyAction.CHAR || event.action() == KeyAction.DIGIT) {
                     char c = event.ch();
                     statusMessage = null;
@@ -209,8 +193,8 @@ public class RegisterScreen implements Screen {
                             }
                         }
                         case 1 -> {
-                            if (usernameBuf.length() < 30 && (Character.isLetterOrDigit(c) || c == '.' || c == '_' || c == '-')) {
-                                usernameBuf.append(c);
+                            if (phoneBuf.length() < 20 && (Character.isDigit(c) || c == '+' || c == '-' || c == ' ' || c == '(' || c == ')')) {
+                                phoneBuf.append(c);
                             }
                         }
                         case 2 -> {
@@ -219,8 +203,8 @@ public class RegisterScreen implements Screen {
                             }
                         }
                         case 3 -> {
-                            if (phoneBuf.length() < 20 && (Character.isDigit(c) || c == '+' || c == '-' || c == ' ' || c == '(' || c == ')')) {
-                                phoneBuf.append(c);
+                            if (usernameBuf.length() < 30 && (Character.isLetterOrDigit(c) || c == '.' || c == '_' || c == '-')) {
+                                usernameBuf.append(c);
                             }
                         }
                         case 4 -> {
@@ -228,11 +212,9 @@ public class RegisterScreen implements Screen {
                                 passwordBuf.append(c);
                             }
                         }
-                        case 7 -> {
-                            if ((c >= '0' && c <= '9') || (c == '.' && !depositBuf.toString().contains("."))) {
-                                if (depositBuf.length() < 12) {
-                                    depositBuf.append(c);
-                                }
+                        case 5 -> {
+                            if (confirmPasswordBuf.length() < 32 && c >= 32 && c <= 126) {
+                                confirmPasswordBuf.append(c);
                             }
                         }
                     }
@@ -246,81 +228,100 @@ public class RegisterScreen implements Screen {
         }
     }
 
-    private void renderScreen(int width, int focusedField,
-                             StringBuilder fullNameBuf, StringBuilder usernameBuf, StringBuilder emailBuf,
-                             StringBuilder phoneBuf, StringBuilder passwordBuf,
-                             AccountType accountType, Currency currency, StringBuilder depositBuf,
-                             boolean firstRender) {
+    private void renderScreen(int width, int focusedField, int actionIdx,
+                              StringBuilder fullNameBuf, StringBuilder phoneBuf, StringBuilder emailBuf,
+                              StringBuilder usernameBuf, StringBuilder passwordBuf, StringBuilder confirmPasswordBuf,
+                              int currencyIdx, boolean firstRender) {
         StringBuilder sb = new StringBuilder();
 
         // 1. Header Box Compartment
         sb.append(TUIBox.top(width)).append("\n");
-        sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > NEW CUSTOMER REGISTRATION"), width)).append("\n");
+        sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > AUTHENTICATION GATEWAY > CUSTOMER REGISTRATION"), width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
-        // 2. Customer Profile Section (No database leaks)
-        sb.append(TUIBox.line("CUSTOMER PROFILE", width)).append("\n");
+        // 2. Personal Profile Section
+        sb.append(TUIBox.line("PERSONAL PROFILE", width)).append("\n");
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
         sb.append(formatTextField("Full Legal Name", fullNameBuf.toString(), focusedField == 0, false)).append("\n");
-        sb.append(formatTextField("Desired Username", usernameBuf.toString(), focusedField == 1, false)).append("\n");
+        sb.append(formatTextField("Phone Number", phoneBuf.toString(), focusedField == 1, false)).append("\n");
         sb.append(formatTextField("Email Address", emailBuf.toString(), focusedField == 2, false)).append("\n");
-        sb.append(formatTextField("Phone Number", phoneBuf.toString(), focusedField == 3, false)).append("\n");
+
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+        sb.append(TUIBox.divider(width)).append("\n");
+
+        // 3. Credentials & Security Requirements Section
+        sb.append(TUIBox.line("CREDENTIALS & SECURITY REQUIREMENTS", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+
+        sb.append(formatTextField("Username", usernameBuf.toString(), focusedField == 3, false)).append("\n");
         sb.append(formatTextField("Password", passwordBuf.toString(), focusedField == 4, true)).append("\n");
 
+        // Real-time Strength Score & Rule Checklist
+        PasswordEvaluation eval = PasswordValidator.evaluate(passwordBuf.toString());
+
+        String colorizedMeter;
+        if (eval.score() == 4) {
+            colorizedMeter = "[" + ConsoleTheme.success(eval.meterBar()) + "] " + ConsoleTheme.success(eval.strengthLabel());
+        } else if (eval.score() == 3) {
+            colorizedMeter = "[" + ConsoleTheme.info(eval.meterBar()) + "] " + ConsoleTheme.info(eval.strengthLabel());
+        } else if (eval.score() == 2) {
+            colorizedMeter = "[" + ConsoleTheme.warning(eval.meterBar()) + "] " + ConsoleTheme.warning(eval.strengthLabel());
+        } else {
+            colorizedMeter = "[" + ConsoleTheme.error(eval.meterBar()) + "] " + ConsoleTheme.error(eval.strengthLabel());
+        }
+        String strengthRow = String.format("  %-21s: %s", "Strength Score", colorizedMeter);
+        sb.append(TUIBox.line(strengthRow, width)).append("\n");
+
+        String r1 = (eval.lengthMet() ? ConsoleTheme.success("[✔]") : ConsoleTheme.muted("[ ]")) + " 8+ Chars";
+        String r2 = (eval.upperLowerMet() ? ConsoleTheme.success("[✔]") : ConsoleTheme.muted("[ ]")) + " Upper/Lower";
+        String r3 = (eval.numberMet() ? ConsoleTheme.success("[✔]") : ConsoleTheme.muted("[ ]")) + " Number";
+        String r4 = (eval.symbolMet() ? ConsoleTheme.success("[✔]") : ConsoleTheme.muted("[ ]")) + " Sym";
+        String checklistContent = String.format("%s   %s   %s   %s", r1, r2, r3, r4);
+        String checklistRow = String.format("  %-21s: %s", "Rule Checklist", checklistContent);
+        sb.append(TUIBox.line(checklistRow, width)).append("\n");
+
+        sb.append(formatTextField("Confirm Password", confirmPasswordBuf.toString(), focusedField == 5, true)).append("\n");
+
+        String currDisplay = (currencyIdx == 0)
+                ? "(1) USD - US Dollar"
+                : "(2) KHR - Cambodian Riel";
+        sb.append(formatTextField("Primary Currency", currDisplay, focusedField == 6, false)).append("\n");
+
         sb.append(TUIBox.emptyLine(width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
-        // 3. Initial Account Configuration Section
-        sb.append(TUIBox.line("INITIAL ACCOUNT CONFIGURATION", width)).append("\n");
-        sb.append(TUIBox.emptyLine(width)).append("\n");
-
-        // Account Type Radio
-        String optSavings = (accountType == AccountType.SAVINGS) ? "(•) SAVINGS" : "( ) SAVINGS";
-        String optChecking = (accountType == AccountType.CHECKING) ? "(•) CHECKING" : "( ) CHECKING";
-        sb.append(formatRadioField("Account Type", optSavings, optChecking, focusedField == 5)).append("\n");
-
-        // Primary Currency Radio
-        String optUsd = (currency == Currency.USD) ? "(•) USD" : "( ) USD";
-        String optKhr = (currency == Currency.KHR) ? "(•) KHR" : "( ) KHR";
-        sb.append(formatRadioField("Primary Currency", optUsd, optKhr, focusedField == 6)).append("\n");
-
-        // Initial Deposit
-        String symbol = (currency == Currency.KHR) ? "៛" : "$";
-        sb.append(formatDepositField("Initial Deposit", symbol, depositBuf.toString(), focusedField == 7)).append("\n");
-
-        sb.append(TUIBox.emptyLine(width)).append("\n");
-        sb.append(TUIBox.divider(width)).append("\n");
-
-        // 4. Action Buttons Section
+        // 4. Action Section
         sb.append(TUIBox.line("ACTION", width)).append("\n");
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
-        String btn1 = (focusedField == 8)
-                ? ("▸ " + ConsoleTheme.highlight("[1] Submit Registration"))
-                : ("  " + (focusedField < 8 ? "[1] Submit Registration" : ConsoleTheme.muted("[1] Submit Registration")));
-        String btn2 = (focusedField == 9)
+        String btn1 = (focusedField == 7 && actionIdx == 0)
+                ? ("▸ " + ConsoleTheme.highlight("[1] Create Bank Profile"))
+                : ("  [1] Create Bank Profile");
+        String btn2 = (focusedField == 7 && actionIdx == 1)
                 ? ("▸ " + ConsoleTheme.highlight("[2] Cancel & Return"))
-                : ("  " + ConsoleTheme.muted("[2] Cancel & Return"));
+                : ("  [2] Cancel & Return");
 
         String actionRow = "  " + btn1 + "                       " + btn2;
         sb.append(TUIBox.line(actionRow, width)).append("\n");
-        sb.append(TUIBox.emptyLine(width)).append("\n");
 
-        // 5. Optional Status / Error Line inside container
-        if (statusMessage != null) {
-            sb.append(TUIBox.divider(width)).append("\n");
-            String msg = isErrorStatus ? ConsoleTheme.error(" Error: " + statusMessage) : ConsoleTheme.success(" " + statusMessage);
-            sb.append(TUIBox.line(msg, width)).append("\n");
-        }
-
-        // 6. Contained Footer Note & Border
+        // 5. Status Compartment
         sb.append(TUIBox.divider(width)).append("\n");
-        sb.append(TUIBox.line("Note: Passwords hashed via BCrypt. Account numbers generated automatically.", width)).append("\n");
+        String statusText;
+        if (statusMessage != null) {
+            statusText = isErrorStatus ? ConsoleTheme.error("Status: " + statusMessage) : ConsoleTheme.success("Status: " + statusMessage);
+        } else if (eval.isValid()) {
+            statusText = "Status: Password satisfies enterprise security complexity requirements.";
+        } else if (!passwordBuf.isEmpty()) {
+            statusText = ConsoleTheme.warning("Status: Password must satisfy all 4 security requirements.");
+        } else {
+            statusText = "Status: Complete profile and credentials to create account.";
+        }
+        sb.append(TUIBox.line(statusText, width)).append("\n");
         sb.append(TUIBox.bottom(width)).append("\n");
 
-        // 7. Standard Navigation Guide
-        sb.append(ConsoleTheme.muted(" [Tab/↓] Next Field  •  [Space] Toggle Radio  •  [Enter] Confirm  •  [Esc] Cancel")).append("\n");
+        // 6. Navigation Guide
+        sb.append(ConsoleTheme.keyGuide("[Tab/↓] Next Field  •  [Enter] Confirm/Select  •  [1/2] Action  •  [Esc] Cancel")).append("\n");
 
         ScreenRenderer.render(sb.toString(), firstRender);
     }
@@ -330,59 +331,29 @@ public class RegisterScreen implements Screen {
         if (isFocused) {
             displayVal = displayVal + "_";
         }
-        if (displayVal.length() > 53) {
-            displayVal = displayVal.substring(0, 53);
+        if (displayVal.length() > 49) {
+            displayVal = displayVal.substring(0, 49);
         }
-        String padded = String.format("%-53s", displayVal);
+        String padded = String.format("%-49s", displayVal);
         String bracketContent = isFocused ? ConsoleTheme.highlight(padded) : padded;
-        String row = String.format(" %-18s: [ %s ]", label, bracketContent);
-        return TUIBox.line(row, TUILayout.APP_WIDTH);
-    }
-
-    private String formatRadioField(String label, String opt1, String opt2, boolean isFocused) {
-        String radioContent = String.format("%-22s %-30s", opt1, opt2);
-        String bracketContent = isFocused ? ConsoleTheme.highlight(radioContent) : radioContent;
-        String row = String.format(" %-18s: [ %s ]", label, bracketContent);
-        return TUIBox.line(row, TUILayout.APP_WIDTH);
-    }
-
-    private String formatDepositField(String label, String symbol, String amount, boolean isFocused) {
-        String displayVal = symbol + " " + amount;
-        if (isFocused) {
-            displayVal = displayVal + "_";
-        }
-        if (displayVal.length() > 53) {
-            displayVal = displayVal.substring(0, 53);
-        }
-        String padded = String.format("%-53s", displayVal);
-        String bracketContent = isFocused ? ConsoleTheme.highlight(padded) : padded;
-        String row = String.format(" %-18s: [ %s ]", label, bracketContent);
+        String row = String.format("  %-21s: [ %s ]", label, bracketContent);
         return TUIBox.line(row, TUILayout.APP_WIDTH);
     }
 
     private boolean submitRegistration(Terminal terminal, Attributes origAttributes, NonBlockingReader reader,
                                        ScreenNavigator navigator, TUISession session,
-                                       String fullNameRaw, String usernameRaw, String emailRaw,
-                                       String phoneRaw, String passwordRaw,
-                                       AccountType accountType, Currency currency, String depositRaw) {
+                                       String fullNameRaw, String phoneRaw, String emailRaw,
+                                       String usernameRaw, String passwordRaw, String confirmPasswordRaw,
+                                       Currency primaryCurrency) {
         String fullName = fullNameRaw.trim();
-        String username = usernameRaw.trim();
-        String email = emailRaw.trim();
         String phone = phoneRaw.trim();
+        String email = emailRaw.trim();
+        String username = usernameRaw.trim();
         String password = passwordRaw;
+        String confirmPassword = confirmPasswordRaw;
 
         if (fullName.isEmpty()) {
             this.statusMessage = "Full Legal Name is required.";
-            this.isErrorStatus = true;
-            return false;
-        }
-        if (username.length() < 3) {
-            this.statusMessage = "Username must contain at least 3 characters.";
-            this.isErrorStatus = true;
-            return false;
-        }
-        if (!email.contains("@") || !email.contains(".")) {
-            this.statusMessage = "Please provide a valid email address.";
             this.isErrorStatus = true;
             return false;
         }
@@ -391,51 +362,33 @@ public class RegisterScreen implements Screen {
             this.isErrorStatus = true;
             return false;
         }
-        if (password.length() < 8) {
-            this.statusMessage = "Password must contain at least 8 characters.";
+        if (email.isEmpty() || !email.contains("@") || !email.contains(".")) {
+            this.statusMessage = "Please provide a valid email address.";
+            this.isErrorStatus = true;
+            return false;
+        }
+        if (username.length() < 3) {
+            this.statusMessage = "Username must contain at least 3 characters.";
             this.isErrorStatus = true;
             return false;
         }
 
-        BigDecimal depositAmount = BigDecimal.ZERO;
-        String cleanDep = depositRaw.trim();
-        if (!cleanDep.isEmpty()) {
-            try {
-                depositAmount = new BigDecimal(cleanDep);
-                if (depositAmount.compareTo(BigDecimal.ZERO) < 0) {
-                    this.statusMessage = "Initial deposit amount cannot be negative.";
-                    this.isErrorStatus = true;
-                    return false;
-                }
-            } catch (Exception e) {
-                this.statusMessage = "Invalid numeric initial deposit amount.";
-                this.isErrorStatus = true;
-                return false;
-            }
+        PasswordEvaluation eval = PasswordValidator.evaluate(password);
+        if (!eval.isValid()) {
+            this.statusMessage = "Password must satisfy all 4 security rules.";
+            this.isErrorStatus = true;
+            return false;
+        }
+
+        if (!password.equals(confirmPassword)) {
+            this.statusMessage = "Confirm Password does not match.";
+            this.isErrorStatus = true;
+            return false;
         }
 
         try {
-            UserDTO newUser = authController.register(username, email, password, fullName, phone);
-
-            // Fetch user entity and provision custom account type/currency/deposit if needed
-            Optional<User> userEntityOpt = ControllerFactory.getUserRepository().findById(newUser.getUserId());
-            if (userEntityOpt.isPresent()) {
-                User userEntity = userEntityOpt.get();
-                List<Account> accounts = ControllerFactory.getAccountRepository().findByUserId(userEntity.getUserId());
-                if (!accounts.isEmpty()) {
-                    Account defaultAcc = accounts.get(0);
-                    defaultAcc.setAccountType(accountType);
-                    defaultAcc.setCurrency(currency);
-                    ControllerFactory.getAccountRepository().save(defaultAcc);
-
-                    if (depositAmount.compareTo(BigDecimal.ZERO) > 0) {
-                        ControllerFactory.getAccountService().deposit(
-                                defaultAcc.getAccountId(), depositAmount, currency, "Initial opening deposit", null, userEntity);
-                    }
-                }
-            }
-
-            renderSuccessScreen(newUser, accountType, currency, depositAmount, reader);
+            UserDTO newUser = authController.register(username, email, password, fullName, phone, primaryCurrency);
+            renderSuccessScreen(newUser, primaryCurrency, reader);
             terminal.setAttributes(origAttributes);
             navigator.clearAndPush(new LoginScreen());
             return true;
@@ -446,25 +399,24 @@ public class RegisterScreen implements Screen {
         }
     }
 
-    private void renderSuccessScreen(UserDTO newUser, AccountType accType, Currency currency,
-                                    BigDecimal depositAmount, NonBlockingReader reader) throws IOException {
+    private void renderSuccessScreen(UserDTO newUser, Currency currency, NonBlockingReader reader) throws IOException {
         int width = TUILayout.APP_WIDTH;
         StringBuilder successSb = new StringBuilder();
         successSb.append(TUIBox.top(width)).append("\n");
         successSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > REGISTRATION COMPLETE"), width)).append("\n");
         successSb.append(TUIBox.divider(width)).append("\n");
         successSb.append(TUIBox.emptyLine(width)).append("\n");
-        successSb.append(TUIBox.center(ConsoleTheme.success("✔ Registration Approved & Initial Account Provisioned!"), width)).append("\n");
+        successSb.append(TUIBox.center(ConsoleTheme.success("✔ Registration Approved & Primary Account Provisioned!"), width)).append("\n");
         successSb.append(TUIBox.emptyLine(width)).append("\n");
-        successSb.append(TUIBox.line("  Customer Name : " + ConsoleTheme.highlight(newUser.getFullName()), width)).append("\n");
-        successSb.append(TUIBox.line("  Username      : " + newUser.getUsername(), width)).append("\n");
-        successSb.append(TUIBox.line("  Account Type  : " + accType + " (" + currency + ")", width)).append("\n");
-        successSb.append(TUIBox.line("  Initial Fund  : " + ConsoleFormatter.formatCurrency(depositAmount) + " " + currency, width)).append("\n");
+        successSb.append(TUIBox.line("  Customer Name    : " + ConsoleTheme.highlight(newUser.getFullName()), width)).append("\n");
+        successSb.append(TUIBox.line("  Username         : " + newUser.getUsername(), width)).append("\n");
+        successSb.append(TUIBox.line("  Primary Currency : " + currency.name(), width)).append("\n");
+        successSb.append(TUIBox.line("  Initial Balance  : " + (currency == Currency.KHR ? "៛ 0" : "$ 0.00"), width)).append("\n");
         successSb.append(TUIBox.emptyLine(width)).append("\n");
         successSb.append(TUIBox.divider(width)).append("\n");
-        successSb.append(TUIBox.line("Note: Passwords hashed via BCrypt. Account numbers generated automatically.", width)).append("\n");
+        successSb.append(TUIBox.line("Note: Passwords hashed via BCrypt. Account number generated automatically.", width)).append("\n");
         successSb.append(TUIBox.bottom(width)).append("\n");
-        successSb.append(ConsoleTheme.muted("  Press [Enter] to proceed to Sign In...")).append("\n");
+        successSb.append(ConsoleTheme.keyGuide("Press [Enter] to proceed to Sign In...")).append("\n");
         ScreenRenderer.render(successSb.toString(), true);
 
         while (true) {

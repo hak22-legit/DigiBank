@@ -14,7 +14,65 @@ public final class ConsoleFormatter {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
+    private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#,##0.00");
+    private static final DecimalFormat INTEGER_FORMAT = new DecimalFormat("#,##0");
+
     private ConsoleFormatter() {}
+
+    public static String getCurrencySymbol(String currencyCode) {
+        if (currencyCode == null) return "$";
+        return switch (currencyCode.trim().toUpperCase()) {
+            case "KHR" -> "៛";
+            case "EUR" -> "€";
+            case "JPY" -> "¥";
+            case "USD" -> "$";
+            default -> currencyCode.trim().isEmpty() ? "$" : currencyCode.trim();
+        };
+    }
+
+    public static String getCurrencySymbol(com.bank.model.enums.Currency currency) {
+        if (currency == null) return "$";
+        return getCurrencySymbol(currency.name());
+    }
+
+    public static String formatAmount(BigDecimal amount, String currencyCode) {
+        if (amount == null) amount = BigDecimal.ZERO;
+        String code = currencyCode != null ? currencyCode.trim().toUpperCase() : "USD";
+        if ("KHR".equals(code) || "JPY".equals(code)) {
+            if (amount.remainder(BigDecimal.ONE).compareTo(BigDecimal.ZERO) == 0) {
+                return INTEGER_FORMAT.format(amount);
+            }
+        }
+        return DECIMAL_FORMAT.format(amount);
+    }
+
+    public static String formatAmount(BigDecimal amount, com.bank.model.enums.Currency currency) {
+        return formatAmount(amount, currency != null ? currency.name() : "USD");
+    }
+
+    public static String formatAccountBalance(BigDecimal amount, String currencyCode) {
+        if (amount == null) amount = BigDecimal.ZERO;
+        String code = currencyCode != null ? currencyCode.trim().toUpperCase() : "USD";
+        String symbol = getCurrencySymbol(code);
+        String formattedAmt = formatAmount(amount, code);
+        return String.format("%s %s %s", symbol, formattedAmt, code);
+    }
+
+    public static String formatAccountBalance(BigDecimal amount, com.bank.model.enums.Currency currency) {
+        return formatAccountBalance(amount, currency != null ? currency.name() : "USD");
+    }
+
+    public static String formatAlignedBalance(BigDecimal amount, String currencyCode) {
+        if (amount == null) amount = BigDecimal.ZERO;
+        String code = currencyCode != null ? currencyCode.trim().toUpperCase() : "USD";
+        String symbol = getCurrencySymbol(code);
+        String formattedAmt = formatAmount(amount, code);
+        return String.format("%s %9s %s", symbol, formattedAmt, code);
+    }
+
+    public static String formatAlignedBalance(BigDecimal amount, com.bank.model.enums.Currency currency) {
+        return formatAlignedBalance(amount, currency != null ? currency.name() : "USD");
+    }
 
     public static String formatCurrency(BigDecimal amount) {
         if (amount == null) return "$0.00";

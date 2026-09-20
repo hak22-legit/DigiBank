@@ -133,12 +133,12 @@ public class TerminalContext implements AutoCloseable {
             }
 
             if (ch == 27) { // ESC or Escape Sequence
-                int next = reader.read(100);
+                int next = reader.read(25);
                 if (next == -2 || next == -1) {
                     return new InputEvent(Key.ESCAPE, (char) 27, 27);
                 }
                 if (next == '[' || next == 'O') {
-                    int code = reader.read();
+                    int code = reader.read(25);
                     return switch (code) {
                         case 'A' -> new InputEvent(Key.UP, 'A', code);
                         case 'B' -> new InputEvent(Key.DOWN, 'B', code);

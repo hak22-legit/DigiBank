@@ -88,7 +88,7 @@ public final class TUIFormHelper {
         }
 
         String paddedVal = String.format("%-" + valueWidth + "s", displayVal);
-        String bracketContent = isFocused ? ConsoleTheme.highlight(paddedVal) : paddedVal;
+        String bracketContent = isFocused ? ConsoleTheme.inlineHighlight(paddedVal) : paddedVal;
         String labelPart = String.format("  %-" + labelWidth + "s: [ ", label);
         String row = labelPart + bracketContent + " ]";
         return TUIBox.line(row, TUILayout.APP_WIDTH);

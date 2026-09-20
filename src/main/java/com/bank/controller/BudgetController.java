@@ -23,4 +23,8 @@ public class BudgetController {
     public Budget createBudget(User user, Long categoryId, BigDecimal limit, BudgetPeriod period, LocalDate start, LocalDate end) {
         return budgetService.createBudget(user, categoryId, limit, period, start, end);
     }
+
+    public boolean deleteBudget(User user, Long budgetId) {
+        return budgetService.deleteBudget(budgetId, user);
+    }
 }

@@ -74,12 +74,130 @@ public class AccountService {
         return AccountMapper.toDTO(saved);
     }
 
+    /**
+     * Creates a new bank account with optional atomic funding from an existing account.
+     */
+    public AccountDTO createAndFundAccount(User owner, AccountType accountType, Currency currency,
+                                          BigDecimal initialDeposit, Long fundingAccountId) {
+        if (owner == null) {
+            throw new UnauthorizedException("User session is required to open an account");
+        }
+        if (accountType == null) {
+            throw new IllegalArgumentException("Account type is required");
+        }
+        if (currency == null) {
+            currency = Currency.USD;
+        }
+
+        BigDecimal deposit = (initialDeposit != null) ? initialDeposit : BigDecimal.ZERO;
+        if (deposit.compareTo(BigDecimal.ZERO) < 0) {
+            throw new InvalidAmountException("Initial deposit cannot be negative");
+        }
+
+        String accountNumber = AccountNumberGenerator.generate();
+        while (accountRepository.findByAccountNumber(accountNumber).isPresent()) {
+            accountNumber = AccountNumberGenerator.generate();
+        }
+
+        if (deposit.compareTo(BigDecimal.ZERO) == 0 || fundingAccountId == null) {
+            Account account = Account.builder()
+                    .userId(owner.getUserId())
+                    .accountNumber(accountNumber)
+                    .accountType(accountType)
+                    .balance(BigDecimal.ZERO)
+                    .currency(currency)
+                    .status(AccountStatus.ACTIVE)
+                    .build();
+            Account saved = accountRepository.save(account);
+            return AccountMapper.toDTO(saved);
+        }
+
+        Connection conn = null;
+        Account savedNewAccount;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            Account fundingAccount = accountRepository.findByIdForUpdate(conn, fundingAccountId)
+                    .orElseThrow(() -> new AccountNotFoundException("Funding account not found: " + fundingAccountId));
+
+            assertOwnership(fundingAccount, owner);
+            assertActive(fundingAccount);
+
+            Currency fundingCurrency = fundingAccount.getCurrency();
+            BigDecimal debitAmount;
+
+            if (fundingCurrency == currency) {
+                debitAmount = deposit;
+            } else {
+                Map<String, BigDecimal> rates = (liveCurrencyService != null)
+                        ? liveCurrencyService.getRates()
+                        : CurrencyConverter.getFallbackRates();
+                debitAmount = CurrencyConverter.convert(deposit, currency.name(), fundingCurrency.name(), rates);
+            }
+
+            if (fundingAccount.getBalance().compareTo(debitAmount) < 0) {
+                throw new InsufficientBalanceException("Insufficient balance in funding account: available "
+                        + fundingAccount.getBalance() + " " + fundingCurrency + ", required " + debitAmount + " " + fundingCurrency);
+            }
+
+            fundingAccount.setBalance(fundingAccount.getBalance().subtract(debitAmount));
+            accountRepository.updateWithConnection(conn, fundingAccount);
+
+            Account newAccount = Account.builder()
+                    .userId(owner.getUserId())
+                    .accountNumber(accountNumber)
+                    .accountType(accountType)
+                    .balance(deposit)
+                    .currency(currency)
+                    .status(AccountStatus.ACTIVE)
+                    .build();
+            savedNewAccount = accountRepository.saveWithConnection(conn, newAccount);
+
+            Transaction debitTxn = Transaction.builder()
+                    .accountId(fundingAccount.getAccountId())
+                    .relatedAccountId(savedNewAccount.getAccountId())
+                    .transactionType(TransactionType.TRANSFER)
+                    .amount(debitAmount)
+                    .currency(fundingCurrency)
+                    .description("Initial funding for new account " + savedNewAccount.getAccountNumber())
+                    .status(TransactionStatus.COMPLETED)
+                    .build();
+            transactionRepository.saveWithConnection(conn, debitTxn);
+
+            Transaction creditTxn = Transaction.builder()
+                    .accountId(savedNewAccount.getAccountId())
+                    .relatedAccountId(fundingAccount.getAccountId())
+                    .transactionType(TransactionType.DEPOSIT)
+                    .amount(deposit)
+                    .currency(currency)
+                    .description("Initial opening deposit from " + fundingAccount.getAccountNumber())
+                    .status(TransactionStatus.COMPLETED)
+                    .build();
+            transactionRepository.saveWithConnection(conn, creditTxn);
+
+            conn.commit();
+        } catch (RuntimeException | SQLException e) {
+            rollbackQuietly(conn);
+            if (e instanceof RuntimeException re) throw re;
+            throw new RuntimeException("Account creation and funding failed", e);
+        } finally {
+            closeQuietly(conn);
+        }
+
+        return AccountMapper.toDTO(savedNewAccount);
+    }
+
     public Account getAccountById(Long accountId, User requestingUser) {
         Account account = accountRepository.findById(accountId)
                 .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId));
 
         assertOwnership(account, requestingUser);
         return account;
+    }
+
+    public Optional<Account> getAccountById(Long accountId) {
+        return accountRepository.findById(accountId);
     }
 
     public List<AccountDTO> getAccountsForUser(User user) {

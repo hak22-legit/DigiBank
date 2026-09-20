@@ -1,11 +1,33 @@
-<configuration>
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+<configuration scan="true" scanPeriod="30 seconds">
+
+    <!-- Define log directory and filename -->
+    <property name="LOG_DIR" value="logs" />
+    <property name="LOG_FILE" value="digibank" />
+
+    <!-- File Appender: captures all internal engine operations -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/${LOG_FILE}.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/${LOG_FILE}-%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
         <encoder>
-            <pattern>%d{HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
+    <!-- Silence noisy external libraries completely -->
+    <logger name="com.zaxxer.hikari" level="WARN" />
+    <logger name="org.flywaydb" level="WARN" />
+    <logger name="org.postgresql" level="WARN" />
+    <logger name="org.jline" level="OFF" />
+    <logger name="com.bank.service.LiveCurrencyService" level="WARN" />
+    <logger name="c.bank.service.LiveCurrencyService" level="WARN" />
+
+    <!-- Root logger routes strictly to FILE, completely disconnected from CONSOLE -->
     <root level="INFO">
-        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE" />
     </root>
+
 </configuration>

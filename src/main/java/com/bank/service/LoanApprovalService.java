@@ -147,8 +147,8 @@ public class LoanApprovalService {
     }
 
     private void assertLoanOfficer(Admin admin) {
-        if (admin.getRole() != AdminRole.LOAN_OFFICER) {
-            throw new UnauthorizedException("Only LOAN_OFFICER can perform this action");
+        if (admin.getRole() != AdminRole.LOAN_OFFICER && admin.getRole() != AdminRole.SUPER_ADMIN) {
+            throw new UnauthorizedException("Only LOAN_OFFICER or SUPER_ADMIN can perform this action");
         }
     }
 

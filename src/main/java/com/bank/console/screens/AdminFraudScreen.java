@@ -74,8 +74,8 @@ public class AdminFraudScreen implements Screen {
                         : (a.getRiskLevel() == RiskLevel.MEDIUM ? ConsoleTheme.warning("MED") : ConsoleTheme.success("LOW"));
 
                 String stat = switch (a.getStatus()) {
-                    case OPEN -> ConsoleTheme.error("OPEN");
-                    case INVESTIGATING -> ConsoleTheme.warning("INVESTIGATING");
+                    case OPEN, PENDING -> ConsoleTheme.error("OPEN");
+                    case INVESTIGATING, UNDER_INVESTIGATION -> ConsoleTheme.warning("INVESTIGATING");
                     case RESOLVED -> ConsoleTheme.success("RESOLVED");
                     case CONFIRMED_FRAUD -> ConsoleTheme.error("CONFIRMED_FRAUD");
                 };

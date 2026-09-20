@@ -8,6 +8,7 @@ import com.bank.console.theme.ConsoleTheme;
 import com.bank.controller.AccountController;
 import com.bank.controller.ReportController;
 import com.bank.model.dto.AccountDTO;
+import com.bank.model.dto.StatementReportData;
 import com.bank.model.dto.UserDTO;
 import com.bank.model.entity.User;
 import com.bank.security.SessionManager;
@@ -22,7 +23,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
- * Screen for generating and exporting JasperReports PDF bank statements.
+ * Screen for generating and exporting enterprise OpenPDF bank statements with SHA-256 audit fingerprinting.
  * Pure keyboard navigation with zero trailing prompts.
  */
 public class StatementScreen implements Screen {
@@ -104,7 +105,7 @@ public class StatementScreen implements Screen {
                     sb.append(TUIBox.emptyLine(width)).append("\n");
                     sb.append(TUIBox.bottom(width)).append("\n");
                     String hotkeyRange = "1-" + Math.min(accounts.size(), 9);
-                    sb.append(ConsoleTheme.muted(String.format(" [↑/↓] Navigate  •  [Enter] Select  •  [%s] Hotkey  •  [Esc] Back", hotkeyRange))).append("\n");
+                    sb.append(ConsoleTheme.keyGuide(String.format("[↑/↓] Navigate  •  [Enter] Select  •  [%s] Hotkey  •  [Esc] Back", hotkeyRange))).append("\n");
 
                     ScreenRenderer.render(sb.toString(), firstRender);
                     firstRender = false;
@@ -193,11 +194,11 @@ public class StatementScreen implements Screen {
         revSb.append(TUIBox.line("  Account        : " + ConsoleTheme.highlight(targetAccount.getAccountNumber() + " (" + targetAccount.getAccountType() + " - " + targetAccount.getCurrency() + ")"), width)).append("\n");
         revSb.append(TUIBox.line("  Cardholder     : " + userEntity.getFullName(), width)).append("\n");
         revSb.append(TUIBox.line("  Period         : " + startDate + " to " + endDate, width)).append("\n");
-        revSb.append(TUIBox.line("  Output Format  : Official PDF (Compiled JasperReports JRXML)", width)).append("\n");
+        revSb.append(TUIBox.line("  Output Format  : Official PDF (OpenPDF / SHA-256 Verified)", width)).append("\n");
         revSb.append(TUIBox.emptyLine(width)).append("\n");
         revSb.append(TUIBox.line("  ► " + ConsoleTheme.highlight("[GENERATE PDF STATEMENT]") + "                   " + ConsoleTheme.muted("[CANCEL]"), width)).append("\n");
         revSb.append(TUIBox.bottom(width)).append("\n");
-        revSb.append(ConsoleTheme.muted(" [Enter] Generate PDF  •  [Esc/B] Cancel")).append("\n");
+        revSb.append(ConsoleTheme.keyGuide("[Enter] Generate PDF  •  [Esc/B] Cancel")).append("\n");
         ScreenRenderer.render(revSb.toString());
 
         Terminal terminal = session.getTerminal();
@@ -238,6 +239,9 @@ public class StatementScreen implements Screen {
         // 4. Trigger Statement Generation
         try {
             String outputPath = reportController.generateStatement(userEntity, targetAccount, fromDateTime, toDateTime);
+            StatementReportData reportData = reportController.prepareReportData(userEntity, targetAccount, fromDateTime, toDateTime);
+            String hash = (reportData != null && reportData.getSha256Hash() != null) ? reportData.getSha256Hash() : "";
+
             StringBuilder exportSb = new StringBuilder();
             exportSb.append(TUIBox.top(width)).append("\n");
             exportSb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > STATEMENTS > EXPORT READY"), width)).append("\n");
@@ -246,11 +250,16 @@ public class StatementScreen implements Screen {
             exportSb.append(TUIBox.center(ConsoleTheme.success("✔ PDF bank statement generated successfully!"), width)).append("\n");
             exportSb.append(TUIBox.emptyLine(width)).append("\n");
             exportSb.append(TUIBox.center(ConsoleTheme.highlight("File Path: " + outputPath), width)).append("\n");
+            if (!hash.isEmpty()) {
+                exportSb.append(TUIBox.emptyLine(width)).append("\n");
+                exportSb.append(TUIBox.center(ConsoleTheme.muted("SHA-256 Audit Fingerprint:"), width)).append("\n");
+                exportSb.append(TUIBox.center(ConsoleTheme.info(hash), width)).append("\n");
+            }
             exportSb.append(TUIBox.emptyLine(width)).append("\n");
             exportSb.append(TUIBox.center(ConsoleTheme.muted("Document is ready for printing, archiving, or auditing."), width)).append("\n");
             exportSb.append(TUIBox.emptyLine(width)).append("\n");
             exportSb.append(TUIBox.bottom(width)).append("\n");
-            exportSb.append(ConsoleTheme.muted(" [Enter] Return to Main Menu  •  [Esc] Back")).append("\n");
+            exportSb.append(ConsoleTheme.keyGuide("[Enter] Return to Main Menu  •  [Esc] Back")).append("\n");
             ScreenRenderer.render(exportSb.toString());
 
             Attributes postAttr = terminal.enterRawMode();

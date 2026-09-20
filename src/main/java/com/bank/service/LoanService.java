@@ -18,15 +18,28 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
 
+import com.bank.model.entity.LoanPayment;
+import com.bank.model.repository.LoanPaymentRepository;
+import com.bank.model.repository.LoanPaymentRepositoryImpl;
+import java.util.Collections;
+import java.util.Optional;
+
 public class LoanService {
     private static final Logger logger = LoggerFactory.getLogger(LoanService.class);
 
     private final LoanRepository loanRepository;
     private final RiskAssessmentService riskAssessmentService;
+    private final LoanPaymentRepository loanPaymentRepository;
 
     public LoanService(LoanRepository loanRepository, RiskAssessmentService riskAssessmentService) {
+        this(loanRepository, riskAssessmentService, new LoanPaymentRepositoryImpl());
+    }
+
+    public LoanService(LoanRepository loanRepository, RiskAssessmentService riskAssessmentService,
+                       LoanPaymentRepository loanPaymentRepository) {
         this.loanRepository = loanRepository;
         this.riskAssessmentService = riskAssessmentService;
+        this.loanPaymentRepository = loanPaymentRepository;
     }
 
     /**
@@ -96,5 +109,85 @@ public class LoanService {
             throw new UnauthorizedException("You do not have access to this loan");
         }
         return LoanMapper.toDTO(loan);
+    }
+
+    public Optional<LoanDTO> getActiveLoan(User user) {
+        if (user == null || user.getUserId() == null) {
+            return Optional.empty();
+        }
+        return loanRepository.findActiveLoanByUserId(user.getUserId())
+                .map(LoanMapper::toDTO);
+    }
+
+    public boolean hasActiveLoan(User user) {
+        return getActiveLoan(user).isPresent();
+    }
+
+    public List<LoanPayment> getRepaymentSchedule(User user) {
+        if (user == null || user.getUserId() == null) {
+            return Collections.emptyList();
+        }
+        Optional<Loan> activeLoanOpt = loanRepository.findActiveLoanByUserId(user.getUserId());
+        if (activeLoanOpt.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Loan activeLoan = activeLoanOpt.get();
+        if (loanPaymentRepository != null) {
+            return loanPaymentRepository.findByLoanId(activeLoan.getLoanId());
+        }
+        return Collections.emptyList();
+    }
+
+    public List<LoanPayment> getRepaymentSchedule(Long loanId, User user) {
+        if (user == null || user.getUserId() == null || loanId == null) {
+            return Collections.emptyList();
+        }
+        Optional<Loan> loanOpt = loanRepository.findById(loanId);
+        if (loanOpt.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Loan loan = loanOpt.get();
+        if (!loan.getUserId().equals(user.getUserId()) || loan.getStatus() != LoanStatus.ACTIVE) {
+            return Collections.emptyList();
+        }
+        if (loanPaymentRepository != null) {
+            return loanPaymentRepository.findByLoanId(loanId);
+        }
+        return Collections.emptyList();
+    }
+
+    public record LoanPipelineStats(
+            long applicationsInQueue,
+            BigDecimal totalVolumePending,
+            long approvedTodayCount,
+            BigDecimal approvedTodayVolume,
+            long rejectedTodayCount
+    ) {}
+
+    public LoanPipelineStats getUnderwritingPipelineStats(com.bank.model.entity.Admin admin) {
+        assertLoanOfficer(admin);
+        long pendingCount = loanRepository.countByStatus(LoanStatus.PENDING.name());
+        BigDecimal pendingVolume = loanRepository.sumRequestedAmountByStatus(LoanStatus.PENDING.name());
+        long approvedCount = loanRepository.countApprovedToday();
+        BigDecimal approvedVolume = loanRepository.sumApprovedAmountToday();
+        long rejectedCount = loanRepository.countRejectedToday();
+
+        return new LoanPipelineStats(pendingCount, pendingVolume, approvedCount, approvedVolume, rejectedCount);
+    }
+
+    public List<Loan> getActiveLoanBook(com.bank.model.entity.Admin admin) {
+        assertLoanOfficer(admin);
+        return loanRepository.findByStatus(LoanStatus.ACTIVE.name());
+    }
+
+    public List<Loan> getCustomerBorrowingHistory(com.bank.model.entity.Admin admin, Long userId) {
+        assertLoanOfficer(admin);
+        return loanRepository.findByUserId(userId);
+    }
+
+    private void assertLoanOfficer(com.bank.model.entity.Admin admin) {
+        if (admin == null || (admin.getRole() != com.bank.model.enums.AdminRole.LOAN_OFFICER && admin.getRole() != com.bank.model.enums.AdminRole.SUPER_ADMIN)) {
+            throw new UnauthorizedException("Only LOAN_OFFICER or SUPER_ADMIN can access loan underwriting facilities");
+        }
     }
 }

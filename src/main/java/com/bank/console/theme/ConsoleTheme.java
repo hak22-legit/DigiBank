@@ -67,6 +67,7 @@ public final class ConsoleTheme {
     public static final String FG_BRIGHT_CYAN = "\u001B[96m";
     public static final String FG_BRIGHT_WHITE = "\u001B[97m";
     public static final String FG_GRAY = "\u001B[90m";
+    public static final String FOOTER_DIM_GRAY = "\u001B[2;90m";
 
     // Legacy Brand Compatibility Tokens
     public static final String BRAND_GOLD = "\u001B[33m"; // Safe standard yellow across all backgrounds
@@ -127,6 +128,22 @@ public final class ConsoleTheme {
     public static String muted(String text) {
         if (text == null) return "";
         return MUTED_STYLE.render(text);
+    }
+
+    /**
+     * Formats a standardized footer key guide line clamped strictly to the layout frame.
+     * Applies 50% visual opacity (Dimmed Muted Gray) and guarantees terminal color reset.
+     */
+    public static String keyGuide(String guideContent) {
+        return com.bank.ui.Ansi.keyGuide(guideContent);
+    }
+
+    /**
+     * Prints a standardized footer key guide line clamped strictly to the layout frame.
+     * Applies 50% visual capacity (Dimmed Muted Gray) and guarantees terminal color reset.
+     */
+    public static void printKeyGuide(String guideContent) {
+        com.bank.ui.Ansi.printKeyGuide(guideContent);
     }
 
     /**

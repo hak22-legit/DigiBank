@@ -26,4 +26,7 @@ public interface TransactionRepository {
      * For TRANSFER, the caller must supply a real caller-provided idempotency key.
      */
     Transaction saveWithConnection(Connection conn, Transaction transaction) throws SQLException;
+
+    List<com.bank.model.dto.TransactionSummaryDTO> getRecentUserActivity(int userId, int limit);
+    List<com.bank.model.dto.TransactionSummaryDTO> getRecentUserActivity(Long userId, int limit);
 }

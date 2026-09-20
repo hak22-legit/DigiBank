@@ -12,6 +12,7 @@ public class AdminDTO {
     private String username;
     private String email;
     private String fullName;
+    private String phoneNumber;
     private AdminRole role;
     private AdminStatus status;
     // passwordHash and securityAnswerHash intentionally omitted

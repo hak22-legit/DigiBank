@@ -65,6 +65,30 @@ public class LoanRepositoryImpl implements LoanRepository {
     }
 
     @Override
+    public List<Loan> findByUserIdAndStatus(Long userId, String status) {
+        String sql = "SELECT * FROM loans WHERE user_id = ? AND status = ? ORDER BY created_at DESC";
+        List<Loan> loans = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setLong(1, userId);
+            stmt.setString(2, status);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) loans.add(mapRow(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error finding loans for user and status: " + userId + ", " + status, e);
+        }
+        return loans;
+    }
+
+    @Override
+    public Optional<Loan> findActiveLoanByUserId(Long userId) {
+        List<Loan> loans = findByUserIdAndStatus(userId, LoanStatus.ACTIVE.name());
+        return loans.isEmpty() ? Optional.empty() : Optional.of(loans.get(0));
+    }
+
+    @Override
     public List<Loan> findAll() {
         String sql = "SELECT * FROM loans ORDER BY created_at DESC";
         List<Loan> loans = new ArrayList<>();
@@ -221,5 +245,74 @@ public class LoanRepositoryImpl implements LoanRepository {
                 .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                 .updatedAt(rs.getTimestamp("updated_at").toLocalDateTime())
                 .build();
+    }
+
+    @Override
+    public long countByStatus(String status) {
+        String sql = "SELECT COUNT(*) FROM loans WHERE status = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) return rs.getLong(1);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error counting loans by status: " + status, e);
+        }
+        return 0;
+    }
+
+    @Override
+    public BigDecimal sumRequestedAmountByStatus(String status) {
+        String sql = "SELECT COALESCE(SUM(requested_amount), 0) FROM loans WHERE status = ?";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) return rs.getBigDecimal(1);
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error summing requested amount by status: " + status, e);
+        }
+        return BigDecimal.ZERO;
+    }
+
+    @Override
+    public long countApprovedToday() {
+        String sql = "SELECT COUNT(*) FROM loans WHERE status IN ('APPROVED', 'ACTIVE') AND approved_at >= CURRENT_DATE";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) return rs.getLong(1);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error counting approved loans today", e);
+        }
+        return 0;
+    }
+
+    @Override
+    public BigDecimal sumApprovedAmountToday() {
+        String sql = "SELECT COALESCE(SUM(approved_amount), 0) FROM loans WHERE status IN ('APPROVED', 'ACTIVE') AND approved_at >= CURRENT_DATE";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) return rs.getBigDecimal(1);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error summing approved loans today", e);
+        }
+        return BigDecimal.ZERO;
+    }
+
+    @Override
+    public long countRejectedToday() {
+        String sql = "SELECT COUNT(*) FROM loans WHERE status = 'REJECTED' AND (approved_at >= CURRENT_DATE OR updated_at >= CURRENT_DATE)";
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) return rs.getLong(1);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error counting rejected loans today", e);
+        }
+        return 0;
     }
 }

@@ -115,7 +115,7 @@ public class CategoryManagementScreen implements Screen {
                     String statusDisplay = isErrorStatus ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage);
                     sb.append(" Status: ").append(statusDisplay).append("\n");
                 }
-                sb.append(ConsoleTheme.muted("  [↑/↓] Navigate  •  [Enter] Select  •  [1/0] Quick Select  •  [Esc] Back")).append("\n");
+                sb.append(ConsoleTheme.keyGuide("[↑/↓] Navigate  •  [Enter] Select  •  [1/0] Quick Select  •  [Esc] Back")).append("\n");
 
                 ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;

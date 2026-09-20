@@ -32,4 +32,12 @@ public class SavingGoalController {
     public void cancelGoal(Long goalId, User user) {
         savingGoalService.cancelGoal(goalId, user);
     }
+
+    public SavingGoal updateGoal(Long goalId, String name, BigDecimal target, LocalDate deadline, User user) {
+        return savingGoalService.updateGoal(goalId, name, target, deadline, user);
+    }
+
+    public SavingGoal withdrawFromGoal(Long goalId, BigDecimal amount, User user) {
+        return savingGoalService.withdrawFromGoal(goalId, amount, user);
+    }
 }

@@ -4,9 +4,11 @@ import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
 import com.bank.console.components.ConsoleFormatter;
-import com.bank.console.components.ConsolePrompt;
 import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
+import com.bank.console.components.TUIFormHelper;
+import com.bank.console.components.TUIFormHelper.KeyAction;
+import com.bank.console.components.TUIFormHelper.KeyEvent;
 import com.bank.console.components.TUILayout;
 import com.bank.console.theme.ConsoleTheme;
 import com.bank.controller.AccountController;
@@ -20,9 +22,6 @@ import com.bank.model.entity.User;
 import com.bank.model.enums.LoanPaymentStatus;
 import com.bank.model.enums.LoanStatus;
 import com.bank.security.SessionManager;
-import com.bank.console.components.TUIFormHelper;
-import com.bank.console.components.TUIFormHelper.KeyAction;
-import com.bank.console.components.TUIFormHelper.KeyEvent;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
@@ -39,7 +38,7 @@ import java.util.List;
 
 /**
  * SCREEN 8: LOANS & INSTALLMENT REPAYMENTS (82 Columns)
- * Interactive raw keyboard navigation, zero dual-prompts.
+ * Pure horizontal action navigation, schema-clean table layout, and zero CLI leaks.
  */
 public class LoanScreen implements Screen {
     private static final Logger logger = LoggerFactory.getLogger(LoanScreen.class);
@@ -79,220 +78,239 @@ public class LoanScreen implements Screen {
         Attributes origAttributes = terminal.enterRawMode();
         NonBlockingReader reader = terminal.reader();
 
-        int selectedIndex = 0; // 0: Payment, 1: Apply, 2: Back
+        int selectedIndex = 0; // 0: Pay Next Installment, 1: Apply for Loan, 2: Dashboard
         boolean firstRender = true;
-        boolean needsReload = true;
-
-        List<LoanDTO> loans = null;
-        LoanDTO activeLoan = null;
-        List<LoanPayment> payments = null;
-        BigDecimal monthlyDue = new BigDecimal("226.45");
-        String accNum = "ACC-770912401";
 
         try {
             while (true) {
-                if (needsReload) {
+                List<LoanDTO> loans = null;
+                try {
+                    loans = loanController.getUserLoans(userEntity);
+                } catch (Exception ignored) {}
+
+                LoanDTO activeLoan = null;
+                if (loans != null) {
+                    activeLoan = loans.stream()
+                            .filter(l -> l.getStatus() == LoanStatus.ACTIVE)
+                            .findFirst()
+                            .orElse(null);
+                }
+
+                List<LoanPayment> payments = null;
+                if (activeLoan != null) {
                     try {
-                        loans = loanController.getUserLoans(userEntity);
+                        payments = loanController.getPaymentHistory(activeLoan.getLoanId(), userEntity);
                     } catch (Exception ignored) {}
+                }
 
-                    activeLoan = null;
-                    if (loans != null) {
-                        activeLoan = loans.stream()
-                                .filter(l -> l.getStatus() == LoanStatus.ACTIVE || l.getStatus() == LoanStatus.APPROVED)
-                                .findFirst()
-                                .orElse(loans.isEmpty() ? null : loans.get(0));
-                    }
+                BigDecimal monthlyDue = new BigDecimal("50.00");
+                BigDecimal principalPortion = new BigDecimal("49.18");
+                BigDecimal interestPortion = new BigDecimal("0.82");
 
-                    // Repayment Schedule
-                    payments = null;
-                    if (activeLoan != null) {
-                        try {
-                            payments = loanController.getPaymentHistory(activeLoan.getLoanId(), userEntity);
-                        } catch (Exception ignored) {}
-                    }
+                if (activeLoan != null && activeLoan.getApprovedAmount() != null && activeLoan.getTermMonths() != null && activeLoan.getTermMonths() > 0) {
+                    monthlyDue = activeLoan.getApprovedAmount().divide(BigDecimal.valueOf(activeLoan.getTermMonths()), 2, RoundingMode.HALF_UP);
+                    principalPortion = monthlyDue.multiply(new BigDecimal("0.9836")).setScale(2, RoundingMode.HALF_UP);
+                    interestPortion = monthlyDue.subtract(principalPortion).max(BigDecimal.ZERO);
+                }
 
-                    // Compute monthly payment estimation
-                    monthlyDue = new BigDecimal("226.45");
-                    if (activeLoan != null && activeLoan.getApprovedAmount() != null && activeLoan.getTermMonths() != null && activeLoan.getTermMonths() > 0) {
-                        monthlyDue = activeLoan.getApprovedAmount().divide(BigDecimal.valueOf(activeLoan.getTermMonths()), 2, RoundingMode.HALF_UP);
-                    }
-
-                    accNum = "ACC-770912401";
-                    if (activeLoan != null && activeLoan.getLoanId() != null) {
-                        try {
-                            var fullLoan = ControllerFactory.getLoanRepository().findById(activeLoan.getLoanId());
-                            if (fullLoan.isPresent() && fullLoan.get().getAccountId() != null) {
-                                Account acc = ControllerFactory.getAccountRepository().findById(fullLoan.get().getAccountId()).orElse(null);
-                                if (acc != null) accNum = acc.getAccountNumber();
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                    needsReload = false;
+                String accNum = "DGB-429309564";
+                if (activeLoan != null && activeLoan.getLoanId() != null) {
+                    try {
+                        var fullLoan = ControllerFactory.getLoanRepository().findById(activeLoan.getLoanId());
+                        if (fullLoan.isPresent() && fullLoan.get().getAccountId() != null) {
+                            Account acc = ControllerFactory.getAccountRepository().findById(fullLoan.get().getAccountId()).orElse(null);
+                            if (acc != null) accNum = acc.getAccountNumber();
+                        }
+                    } catch (Exception ignored) {}
                 }
 
                 StringBuilder sb = new StringBuilder();
 
-                // Render Screen 8 Box
+                // Top Box
                 sb.append(TUIBox.top(width)).append("\n");
                 sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > LOAN MANAGEMENT & REPAYMENTS"), width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
 
                 if (activeLoan != null) {
-                    String loanTitle = String.format("ACTIVE LOAN: #LN-%d (Personal Credit Loan)", activeLoan.getLoanId());
-                    sb.append(TUIBox.line(ConsoleTheme.BOLD + ConsoleTheme.FG_DEFAULT + loanTitle + ConsoleTheme.RESET, width)).append("\n");
+                    String loanTitle = String.format("ACTIVE FACILITY: #LN-%d (Personal Credit Loan)", activeLoan.getLoanId());
+                    sb.append(TUIBox.line(loanTitle, width)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
 
-                    String reqStr = "$" + df.format(activeLoan.getRequestedAmount() != null ? activeLoan.getRequestedAmount() : BigDecimal.ZERO);
-                    String appStr = "$" + df.format(activeLoan.getApprovedAmount() != null ? activeLoan.getApprovedAmount() : BigDecimal.ZERO);
-                    String rateStr = String.format("%.2f%%", activeLoan.getInterestRate() != null ? activeLoan.getInterestRate().doubleValue() : 7.50);
+                    String reqStr = "$ " + df.format(activeLoan.getRequestedAmount() != null ? activeLoan.getRequestedAmount() : new BigDecimal("500.00"));
+                    String appStr = "$ " + df.format(activeLoan.getApprovedAmount() != null ? activeLoan.getApprovedAmount() : new BigDecimal("500.00"));
+                    String rateStr = String.format("%.2f%%", activeLoan.getInterestRate() != null ? activeLoan.getInterestRate().doubleValue() : 2.00);
 
-                    String termStr = (activeLoan.getTermMonths() != null ? activeLoan.getTermMonths() : 24) + " Months";
-                    String balStr = "$" + df.format(activeLoan.getOutstandingBalance() != null ? activeLoan.getOutstandingBalance() : BigDecimal.ZERO);
-                    String riskStr = activeLoan.getRiskLevel() != null ? activeLoan.getRiskLevel().name() : "LOW";
+                    String termStr = (activeLoan.getTermMonths() != null ? activeLoan.getTermMonths() : 10) + " Months";
+                    String balStr = "$ " + df.format(activeLoan.getOutstandingBalance() != null ? activeLoan.getOutstandingBalance() : new BigDecimal("400.00"));
+                    String riskStr = activeLoan.getRiskLevel() != null ? activeLoan.getRiskLevel().name() : "MEDIUM";
 
-                    String row1 = String.format("  Requested : %-12s  Approved : %-14s  Rate  : %s", reqStr, appStr, rateStr);
-                    String row2 = String.format("  Term      : %-12s  Balance  : %-14s  Risk  : %s", termStr, balStr, riskStr);
-                    String row3 = String.format("  Status    : %-12s  Disbursed: %s", activeLoan.getStatus(), accNum);
+                    String row1 = String.format("  Requested  : %-12s   Approved  : %-13s  Interest : %s", reqStr, appStr, rateStr);
+                    String row2 = String.format("  Term       : %-12s   Balance   : %-13s  Risk Tier: %s", termStr, balStr, riskStr);
+                    String row3 = String.format("  Status     : %-12s   Disbursed : %s", activeLoan.getStatus(), accNum);
 
                     sb.append(TUIBox.line(row1, width)).append("\n");
                     sb.append(TUIBox.line(row2, width)).append("\n");
                     sb.append(TUIBox.line(row3, width)).append("\n");
                 } else {
-                    sb.append(TUIBox.line(ConsoleTheme.BOLD + ConsoleTheme.FG_DEFAULT + "ACTIVE LOAN: None" + ConsoleTheme.RESET, width)).append("\n");
+                    sb.append(TUIBox.line("ACTIVE FACILITY: None", width)).append("\n");
                     sb.append(TUIBox.emptyLine(width)).append("\n");
-                    sb.append(TUIBox.line(ConsoleTheme.muted("  No active loan applications found. Select [2] below to apply for a loan."), width)).append("\n");
+                    sb.append(TUIBox.line(ConsoleTheme.muted("  No active loan facilities found. Select [1] below to apply for a loan."), width)).append("\n");
                 }
 
+                sb.append(TUIBox.emptyLine(width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
-                sb.append(TUIBox.line("REPAYMENT SCHEDULE (loan_payments table)", width)).append("\n");
+                sb.append(TUIBox.line("REPAYMENT SCHEDULE & INSTALLMENT HISTORY", width)).append("\n");
                 sb.append(TUIBox.emptyLine(width)).append("\n");
 
-                sb.append(TUIBox.line("  Installment   Due Date     Principal     Interest     Total Due   Status", width)).append("\n");
-                sb.append(TUIBox.line("  ───────────   ──────────   ───────────   ──────────   ─────────   ──────────", width)).append("\n");
-
                 if (payments != null && !payments.isEmpty()) {
-                    for (int i = 0; i < Math.min(payments.size(), 4); i++) {
+                    // Table Header (78 chars inner visible width for width=82)
+                    String header = String.format("  %-3s  %-12s  %11s   %9s   %11s   %-16s ",
+                            "#", "DUE DATE", "PRINCIPAL", "INTEREST", "TOTAL DUE", "STATUS");
+                    sb.append(TUIBox.line(header, width)).append("\n");
+
+                    // Continuous separator line (76 dashes + 2 margin = 78 chars)
+                    String separator = " " + "─".repeat(76) + " ";
+                    sb.append(TUIBox.line(separator, width)).append("\n");
+
+                    int limit = Math.min(payments.size(), 5);
+                    for (int i = 0; i < limit; i++) {
                         LoanPayment p = payments.get(i);
-                        String inst = "Payment #" + (i + 1);
-                        String due = p.getDueDate() != null ? p.getDueDate().format(dfDate) : "2026-09-01";
-                        String princ = "$" + df.format(p.getPrincipalAmount() != null ? p.getPrincipalAmount() : BigDecimal.ZERO);
-                        String intr = "$" + df.format(p.getInterestAmount() != null ? p.getInterestAmount() : BigDecimal.ZERO);
-                        String total = "$" + df.format(p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO);
-                        String stat = (p.getStatus() == LoanPaymentStatus.COMPLETED)
-                                ? ConsoleTheme.success("COMPLETED ✔") : ConsoleTheme.warning("SCHEDULED");
-                        String row = String.format("  %-13s %-12s %-13s %-12s %-11s %s", inst, due, princ, intr, total, stat);
+                        String due = p.getDueDate() != null ? p.getDueDate().format(dfDate) : LocalDate.now().plusMonths(i).format(dfDate);
+                        String princ = "$ " + String.format("%7s", df.format(p.getPrincipalAmount() != null ? p.getPrincipalAmount() : principalPortion));
+                        String intr = "$ " + String.format("%6s", df.format(p.getInterestAmount() != null ? p.getInterestAmount() : interestPortion));
+                        String tot = "$ " + String.format("%7s", df.format(p.getAmount() != null ? p.getAmount() : monthlyDue));
+
+                        String statusToken;
+                        if (p.getStatus() == LoanPaymentStatus.COMPLETED) {
+                            statusToken = "PAID (Settled)";
+                        } else if (p.getDueDate() != null && p.getDueDate().isBefore(LocalDate.now())) {
+                            statusToken = "OVERDUE";
+                        } else {
+                            statusToken = "SCHEDULED";
+                        }
+
+                        String row = String.format("  %02d   %-12s  %11s   %9s   %11s   %-16s ",
+                                i + 1, due, princ, intr, tot, statusToken);
                         sb.append(TUIBox.line(row, width)).append("\n");
                     }
                 } else {
-                    LocalDate now = LocalDate.now();
-                    sb.append(TUIBox.line(String.format("  Payment #1    %s   $ 195.20      $ 31.25      $ 226.45    %s", now.minusMonths(1).format(dfDate), ConsoleTheme.success("COMPLETED ✔")), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Payment #2    %s   $ 196.42      $ 30.03      $ 226.45    %s", now.format(dfDate), ConsoleTheme.success("COMPLETED ✔")), width)).append("\n");
-                    sb.append(TUIBox.line(String.format("  Payment #3    %s   $ 197.65      $ 28.80      $ 226.45    %s", now.plusMonths(1).format(dfDate), ConsoleTheme.warning("SCHEDULED")), width)).append("\n");
+                    sb.append(TUIBox.line(ConsoleTheme.muted("  No active repayment schedule found."), width)).append("\n");
                 }
 
+                sb.append(TUIBox.emptyLine(width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
 
-                String opt1 = "[1] Make Monthly Payment ($" + df.format(monthlyDue) + ")";
-                String opt2 = "[2] Apply for New Loan";
-                String opt3 = "[3] Back to Customer Dashboard";
+                // Compact Horizontal Action Bar
+                int actionCount = activeLoan != null ? 3 : 2;
+                if (activeLoan == null && selectedIndex >= actionCount) {
+                    selectedIndex = 0;
+                }
 
-                sb.append(TUIBox.line(selectedIndex == 0 ? ("   ▸ " + ConsoleTheme.highlight(opt1)) : ("     " + opt1), width)).append("\n");
-                sb.append(TUIBox.line(selectedIndex == 1 ? ("   ► " + ConsoleTheme.highlight(opt2)) : ("     " + opt2), width)).append("\n");
-                sb.append(TUIBox.line(selectedIndex == 2 ? ("   ► " + ConsoleTheme.highlight(opt3)) : ("     " + opt3), width)).append("\n");
+                if (activeLoan != null) {
+                    String opt1 = String.format("[1] Pay Next Installment ($%s)", df.format(monthlyDue));
+                    String opt2 = "[2] Apply for Loan";
+                    String opt3 = "[3] Dashboard";
+
+                    String act1 = selectedIndex == 0 ? "▸ " + ConsoleTheme.highlight(opt1) : "  " + opt1;
+                    String act2 = selectedIndex == 1 ? "▸ " + ConsoleTheme.highlight(opt2) : "  " + opt2;
+                    String act3 = selectedIndex == 2 ? "▸ " + ConsoleTheme.highlight(opt3) : "  " + opt3;
+
+                    String actionRow = "  " + act1 + "     " + act2 + "     " + act3;
+                    sb.append(TUIBox.line(actionRow, width)).append("\n");
+                } else {
+                    String opt1 = "[1] Apply for Loan";
+                    String opt2 = "[2] Dashboard";
+
+                    String act1 = selectedIndex == 0 ? "▸ " + ConsoleTheme.highlight(opt1) : "  " + opt1;
+                    String act2 = selectedIndex == 1 ? "▸ " + ConsoleTheme.highlight(opt2) : "  " + opt2;
+
+                    String actionRow = "  " + act1 + "     " + act2;
+                    sb.append(TUIBox.line(actionRow, width)).append("\n");
+                }
                 sb.append(TUIBox.bottom(width)).append("\n");
 
                 if (statusMessage != null) {
                     String statusDisplay = isErrorStatus ? ConsoleTheme.error(statusMessage) : ConsoleTheme.success(statusMessage);
                     sb.append(" Status: ").append(statusDisplay).append("\n");
                 }
-                sb.append(ConsoleTheme.muted("  [↑/↓/Tab] Navigate  •  [Enter] Select  •  [1-3] Quick Select  •  [R] Refresh  •  [Esc] Back")).append("\n");
+                if (activeLoan != null) {
+                    sb.append(ConsoleTheme.keyGuide("[←/→/Tab] Navigate Actions  •  [Enter] Confirm  •  [1-3] Hotkey  •  [Esc] Back")).append("\n");
+                } else {
+                    sb.append(ConsoleTheme.keyGuide("[←/→/Tab] Navigate Actions  •  [Enter] Confirm  •  [1-2] Hotkey  •  [Esc] Back")).append("\n");
+                }
 
                 ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
 
-                // Read non-blocking raw key via TUIFormHelper
                 KeyEvent event = TUIFormHelper.readKey(reader);
 
                 if (event.action() == KeyAction.ESCAPE) {
                     terminal.setAttributes(origAttributes);
                     navigator.pop();
                     return;
-                } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
-                    selectedIndex = (selectedIndex - 1 + 3) % 3;
-                } else if (event.action() == KeyAction.DOWN || event.action() == KeyAction.TAB || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
-                    selectedIndex = (selectedIndex + 1) % 3;
-                } else if (event.action() == KeyAction.SHIFT_TAB) {
-                    selectedIndex = (selectedIndex - 1 + 3) % 3;
+                } else if (event.action() == KeyAction.LEFT || event.action() == KeyAction.SHIFT_TAB || (event.action() == KeyAction.CHAR && (event.ch() == 'h' || event.ch() == 'H'))) {
+                    selectedIndex = (selectedIndex - 1 + actionCount) % actionCount;
+                } else if (event.action() == KeyAction.RIGHT || event.action() == KeyAction.TAB || (event.action() == KeyAction.CHAR && (event.ch() == 'l' || event.ch() == 'L'))) {
+                    selectedIndex = (selectedIndex + 1) % actionCount;
                 } else if (event.action() == KeyAction.ENTER) {
-                    if (selectedIndex == 0) {
-                        terminal.setAttributes(origAttributes);
-                        navigator.push(new LoanRepaymentScreen(loanController, accountController));
-                        return;
-                    } else if (selectedIndex == 1) {
-                        terminal.setAttributes(origAttributes);
-                        handleApplyLoan(userEntity);
-                        origAttributes = terminal.enterRawMode();
-                        needsReload = true;
-                        firstRender = true;
-                    } else if (selectedIndex == 2) {
-                        terminal.setAttributes(origAttributes);
-                        navigator.pop();
-                        return;
+                    terminal.setAttributes(origAttributes);
+                    if (activeLoan != null) {
+                        if (selectedIndex == 0) {
+                            navigator.push(new LoanRepaymentScreen(loanController, accountController));
+                            return;
+                        } else if (selectedIndex == 1) {
+                            navigator.push(new ApplyLoanScreen(loanController, accountController));
+                            return;
+                        } else if (selectedIndex == 2) {
+                            navigator.pop();
+                            return;
+                        }
+                    } else {
+                        if (selectedIndex == 0) {
+                            navigator.push(new ApplyLoanScreen(loanController, accountController));
+                            return;
+                        } else if (selectedIndex == 1) {
+                            navigator.pop();
+                            return;
+                        }
                     }
-                } else if (event.action() == KeyAction.DIGIT && event.ch() == '1') {
-                    terminal.setAttributes(origAttributes);
-                    navigator.push(new LoanRepaymentScreen(loanController, accountController));
-                    return;
-                } else if (event.action() == KeyAction.DIGIT && event.ch() == '2') {
-                    terminal.setAttributes(origAttributes);
-                    handleApplyLoan(userEntity);
-                    origAttributes = terminal.enterRawMode();
-                    needsReload = true;
-                    firstRender = true;
-                } else if (event.action() == KeyAction.DIGIT && (event.ch() == '3' || event.ch() == '0')) {
-                    terminal.setAttributes(origAttributes);
-                    navigator.pop();
-                    return;
+                } else if (event.action() == KeyAction.DIGIT) {
+                    char ch = event.ch();
+                    if (activeLoan != null) {
+                        if (ch == '1') {
+                            terminal.setAttributes(origAttributes);
+                            navigator.push(new LoanRepaymentScreen(loanController, accountController));
+                            return;
+                        } else if (ch == '2') {
+                            terminal.setAttributes(origAttributes);
+                            navigator.push(new ApplyLoanScreen(loanController, accountController));
+                            return;
+                        } else if (ch == '3' || ch == '0') {
+                            terminal.setAttributes(origAttributes);
+                            navigator.pop();
+                            return;
+                        }
+                    } else {
+                        if (ch == '1') {
+                            terminal.setAttributes(origAttributes);
+                            navigator.push(new ApplyLoanScreen(loanController, accountController));
+                            return;
+                        } else if (ch == '2' || ch == '0') {
+                            terminal.setAttributes(origAttributes);
+                            navigator.pop();
+                            return;
+                        }
+                    }
                 } else if (event.action() == KeyAction.CHAR && (event.ch() == 'b' || event.ch() == 'B')) {
                     terminal.setAttributes(origAttributes);
                     navigator.pop();
                     return;
-                } else if (event.action() == KeyAction.CHAR && (event.ch() == 'r' || event.ch() == 'R')) {
-                    needsReload = true;
                 }
             }
         } catch (IOException e) {
             logger.error("Error reading key on loan screen", e);
         } finally {
             terminal.setAttributes(origAttributes);
-        }
-    }
-
-    private void handleApplyLoan(User userEntity) {
-        System.out.println();
-        BigDecimal amount = ConsolePrompt.promptAmount("Requested Loan Amount");
-        BigDecimal income = ConsolePrompt.promptAmountOptional("Monthly Gross Income", new BigDecimal("2500.00"));
-        BigDecimal expense = ConsolePrompt.promptAmountOptional("Monthly Expenses", new BigDecimal("800.00"));
-        BigDecimal debt = ConsolePrompt.promptAmountOptional("Existing Debt Payments", new BigDecimal("200.00"));
-        int score = Integer.parseInt(ConsolePrompt.promptOptional("Credit Score (300-850)", "720"));
-        int term = Integer.parseInt(ConsolePrompt.promptOptional("Term in Months (e.g. 12, 24, 36)", "24"));
-
-        boolean confirm = ConsolePrompt.promptConfirmation("Submit application for risk assessment?");
-        if (!confirm) {
-            this.statusMessage = "Application cancelled.";
-            this.isErrorStatus = false;
-            return;
-        }
-
-        try {
-            LoanDTO loan = loanController.applyForLoan(userEntity, amount, income, expense, debt, score, term);
-            this.statusMessage = String.format("Application submitted! Loan #%d status: %s (Risk: %s)",
-                    loan.getLoanId(), loan.getStatus(), loan.getRiskLevel());
-            this.isErrorStatus = false;
-        } catch (Exception e) {
-            this.statusMessage = "Application failed: " + e.getMessage();
-            this.isErrorStatus = true;
         }
     }
 }

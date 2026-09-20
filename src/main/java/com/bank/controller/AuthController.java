@@ -53,10 +53,14 @@ public class AuthController {
      * Registers a new customer account.
      */
     public UserDTO register(String username, String email, String password, String fullName, String phone) {
+        return register(username, email, password, fullName, phone, com.bank.model.enums.Currency.USD);
+    }
+
+    public UserDTO register(String username, String email, String password, String fullName, String phone, com.bank.model.enums.Currency primaryCurrency) {
         if (authenticationService != null) {
-            return authenticationService.register(username, email, password, fullName, phone);
+            return authenticationService.register(username, email, password, fullName, phone, primaryCurrency);
         }
-        return legacyAuthService.register(username, email, password, fullName, phone);
+        return legacyAuthService.register(username, email, password, fullName, phone, primaryCurrency);
     }
 
     /**
@@ -90,6 +94,39 @@ public class AuthController {
         throw new UnsupportedOperationException("Password recovery service not initialized");
     }
 
+    public AuthService.PasswordResetInitiationResult initiateCustomerPasswordReset(String identifier) {
+        if (legacyAuthService != null) {
+            return legacyAuthService.initiatePasswordReset(identifier);
+        }
+        throw new UnsupportedOperationException("AuthService not initialized");
+    }
+
+    public boolean verifyOtp(Long userId, String otpCode) {
+        if (legacyAuthService != null) {
+            return legacyAuthService.verifyOtp(userId, otpCode);
+        }
+        return false;
+    }
+
+    public int getRemainingOtpAttempts(Long userId) {
+        if (legacyAuthService != null) {
+            return legacyAuthService.getRemainingOtpAttempts(userId);
+        }
+        return 0;
+    }
+
+    public void resetPasswordWithOtp(Long userId, String otpCode, String newPassword, String confirmPassword) {
+        if (legacyAuthService != null) {
+            legacyAuthService.resetPasswordWithOtp(userId, otpCode, newPassword, confirmPassword);
+            return;
+        }
+        throw new UnsupportedOperationException("AuthService not initialized");
+    }
+
+    public AuthService getAuthService() {
+        return legacyAuthService;
+    }
+
     /**
      * Unified logout clearing all user and staff/admin session data.
      */
@@ -117,20 +154,5 @@ public class AuthController {
         }
         AuthenticatedUser auth = login(username, password);
         return auth.getAdminDTO();
-    }
-
-    @Deprecated
-    public String getSecurityQuestion(String username) {
-        if (legacyAdminAuthService != null) {
-            return legacyAdminAuthService.getSecurityQuestion(username);
-        }
-        return null;
-    }
-
-    @Deprecated
-    public void recoverAdminPassword(String username, String answer, String newPassword) {
-        if (legacyAdminAuthService != null) {
-            legacyAdminAuthService.recoverPasswordWithSecurityAnswer(username, answer, newPassword);
-        }
     }
 }

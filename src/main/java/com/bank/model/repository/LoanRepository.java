@@ -11,6 +11,8 @@ public interface LoanRepository {
     Optional<Loan> findById(Long loanId);
     List<Loan> findByUserId(Long userId);
     List<Loan> findByStatus(String status);
+    List<Loan> findByUserIdAndStatus(Long userId, String status);
+    Optional<Loan> findActiveLoanByUserId(Long userId);
     List<Loan> findAll();
     Loan save(Loan loan);
     boolean deleteById(Long loanId);
@@ -23,4 +25,10 @@ public interface LoanRepository {
      * flow reuses this same pattern established for other entities).
      */
     Loan saveWithConnection(Connection conn, Loan loan) throws SQLException;
+
+    long countByStatus(String status);
+    java.math.BigDecimal sumRequestedAmountByStatus(String status);
+    long countApprovedToday();
+    java.math.BigDecimal sumApprovedAmountToday();
+    long countRejectedToday();
 }

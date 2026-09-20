@@ -36,6 +36,11 @@ public class AdminUserManagementScreen implements Screen {
             return;
         }
 
+        if (adminDto.getRole() == com.bank.model.enums.AdminRole.SUPER_ADMIN) {
+            navigator.replace(new StaffManagementScreen());
+            return;
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append(TUILayout.header("Staff: " + adminDto.getUsername() + " (" + adminDto.getRole() + ")"));
         sb.append(TUILayout.screenTitle("Customer Profile Management"));

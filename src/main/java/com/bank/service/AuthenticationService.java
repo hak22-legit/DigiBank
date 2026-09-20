@@ -135,6 +135,12 @@ public class AuthenticationService {
      * Prevents collision across both customer and staff/admin directories.
      */
     public UserDTO register(String username, String email, String password, String fullName, String phone) {
+        return register(username, email, password, fullName, phone, Currency.USD);
+    }
+
+    public UserDTO register(String username, String email, String password, String fullName, String phone, Currency primaryCurrency) {
+        com.bank.security.PasswordValidator.validate(password);
+
         String cleanUsername = username.trim();
         String cleanEmail = email.trim();
 
@@ -155,7 +161,8 @@ public class AuthenticationService {
                 .build();
 
         User savedUser = userRepository.save(user);
-        accountService.createAccount(savedUser, AccountType.CHECKING, Currency.USD);
+        Currency cur = (primaryCurrency != null) ? primaryCurrency : Currency.USD;
+        accountService.createAccount(savedUser, AccountType.CHECKING, cur);
         logger.info("Registered new customer account: {}", savedUser.getUsername());
 
         return UserMapper.toDTO(savedUser);

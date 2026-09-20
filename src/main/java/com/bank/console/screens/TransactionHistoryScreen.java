@@ -25,6 +25,7 @@ import com.bank.model.enums.HistoryFilter;
 import com.bank.model.enums.TransactionDirection;
 import com.bank.model.enums.TransactionType;
 import com.bank.security.SessionManager;
+import com.bank.ui.Ansi;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
@@ -199,8 +200,13 @@ public class TransactionHistoryScreen implements Screen {
                 String borderChar = ConsoleTheme.border(String.valueOf(TUIBox.V));
 
                 // Table Header: EXACT 80 CHARACTERS (fits inside 82-col box: border + 80 chars + border)
-                String tableHeader = String.format("   %-17s    %-12s    %-25s    %10s ",
+                String rawTableHeader = String.format("   %-17s    %-12s    %-25s    %10s ",
                         "DATE & TIME", "TYPE", "CATEGORY", "AMOUNT");
+                String tableHeader = rawTableHeader
+                        .replace("DATE & TIME", Ansi.cyan("DATE & TIME"))
+                        .replace("TYPE", Ansi.cyan("TYPE"))
+                        .replace("CATEGORY", Ansi.cyan("CATEGORY"))
+                        .replace("AMOUNT", Ansi.cyan("AMOUNT"));
                 sb.append(borderChar).append(tableHeader).append(borderChar).append("\n");
 
                 // Separator Line (77 dashes + 3 spaces padding = 80 chars)
@@ -259,7 +265,9 @@ public class TransactionHistoryScreen implements Screen {
                         if (isSelected) {
                             lineToPrint = borderChar + ConsoleTheme.REVERSE + plainText + ConsoleTheme.RESET + borderChar;
                         } else {
-                            lineToPrint = borderChar + plainText + borderChar;
+                            String coloredAmount = isIncome ? Ansi.green(amountFormatted) : Ansi.red(amountFormatted);
+                            String coloredLine = plainText.replace(amountFormatted, coloredAmount);
+                            lineToPrint = borderChar + coloredLine + borderChar;
                         }
                         sb.append(lineToPrint).append("\n");
                     }
@@ -310,7 +318,7 @@ public class TransactionHistoryScreen implements Screen {
                 sb.append(TUIBox.bottom(width)).append("\n");
 
                 // Single Navigation Line directly beneath bottom border
-                sb.append(ConsoleTheme.muted(" [↑/↓] Select Row  •  [←/→] Page  •  [F] Filter  •  [E] Export PDF  •  [Esc] Back")).append("\n");
+                sb.append(ConsoleTheme.keyGuide("[↑/↓] Select Row  •  [←/→] Page  •  [F] Filter  •  [E] Export PDF  •  [Esc] Back")).append("\n");
 
                 ScreenRenderer.render(sb.toString(), firstRender);
                 firstRender = false;
@@ -511,8 +519,7 @@ public class TransactionHistoryScreen implements Screen {
             sb.append(TUIBox.line("  File Location  : " + ConsoleTheme.highlight(outputPath), width)).append("\n");
             sb.append(TUIBox.emptyLine(width)).append("\n");
             sb.append(TUIBox.divider(width)).append("\n");
-            sb.append(TUIBox.bottom(width)).append("\n");
-            sb.append(" ").append(ConsoleTheme.muted("Press [Enter] or [Esc] to return to ledger")).append("\n");
+            sb.append(ConsoleTheme.keyGuide("Press [Enter] or [Esc] to return to ledger")).append("\n");
 
             ScreenRenderer.render(sb.toString(), true);
             while (true) {
@@ -526,8 +533,7 @@ public class TransactionHistoryScreen implements Screen {
             errSb.append(TUIBox.top(width)).append("\n");
             errSb.append(TUIBox.line(ConsoleTheme.error(" Export Failed: " + e.getMessage()), width)).append("\n");
             errSb.append(TUIBox.divider(width)).append("\n");
-            errSb.append(TUIBox.bottom(width)).append("\n");
-            errSb.append(" ").append(ConsoleTheme.muted("Press [Enter] or [Esc] to return to ledger")).append("\n");
+            errSb.append(ConsoleTheme.keyGuide("Press [Enter] or [Esc] to return to ledger")).append("\n");
             ScreenRenderer.render(errSb.toString(), true);
             try {
                 while (true) {
@@ -621,8 +627,7 @@ public class TransactionHistoryScreen implements Screen {
                         : ("  " + ConsoleTheme.muted("[2] Export Receipt (PDF)"));
                 String actionLine = "  " + b1 + "       " + b2;
                 sb.append(TUIBox.line(actionLine, width)).append("\n");
-                sb.append(TUIBox.bottom(width)).append("\n");
-                sb.append(ConsoleTheme.muted(" [Enter] Execute Action  •  [1/2] Quick Action  •  [Esc] Return to Ledger")).append("\n");
+                sb.append(ConsoleTheme.keyGuide("[Enter] Execute Action  •  [1/2] Quick Action  •  [Esc] Return to Ledger")).append("\n");
 
                 ScreenRenderer.render(sb.toString(), true);
 

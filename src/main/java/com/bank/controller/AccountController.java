@@ -30,6 +30,10 @@ public class AccountController {
         return accountService.createAccount(user, type, currency);
     }
 
+    public AccountDTO createAndFundAccount(User user, AccountType type, Currency currency, BigDecimal initialDeposit, Long fundingAccountId) {
+        return accountService.createAndFundAccount(user, type, currency, initialDeposit, fundingAccountId);
+    }
+
     public Transaction deposit(Long accountId, BigDecimal amount, Currency currency, String desc, Long categoryId, User user) {
         return accountService.deposit(accountId, amount, currency, desc, categoryId, user);
     }

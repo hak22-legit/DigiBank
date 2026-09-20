@@ -21,5 +21,6 @@ public class AuditLog {
     private Long targetId;
     private String details;
     private String ipAddress;
+    private String actorName;
     private LocalDateTime createdAt;
 }

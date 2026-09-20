@@ -34,6 +34,14 @@ public class LoanController {
         return loanRepaymentService.getPaymentHistory(loanId, user);
     }
 
+    public List<LoanPayment> getRepaymentSchedule(User user) {
+        return loanService.getRepaymentSchedule(user);
+    }
+
+    public java.util.Optional<LoanDTO> getActiveLoan(User user) {
+        return loanService.getActiveLoan(user);
+    }
+
     public List<Loan> getPendingLoans(com.bank.model.entity.Admin admin) {
         return loanApprovalService.getPendingLoans(admin);
     }
@@ -44,5 +52,17 @@ public class LoanController {
 
     public Loan rejectLoan(com.bank.model.entity.Admin admin, Long loanId, String reason) {
         return loanApprovalService.rejectLoan(admin, loanId, reason);
+    }
+
+    public com.bank.service.LoanService.LoanPipelineStats getUnderwritingPipelineStats(com.bank.model.entity.Admin admin) {
+        return loanService.getUnderwritingPipelineStats(admin);
+    }
+
+    public List<Loan> getActiveLoanBook(com.bank.model.entity.Admin admin) {
+        return loanService.getActiveLoanBook(admin);
+    }
+
+    public List<Loan> getCustomerBorrowingHistory(com.bank.model.entity.Admin admin, Long userId) {
+        return loanService.getCustomerBorrowingHistory(admin, userId);
     }
 }

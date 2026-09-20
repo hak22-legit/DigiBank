@@ -85,7 +85,8 @@ public class MockupVisualVerificationTest {
         assertNotNull(new AdminLoanScreen());
 
         // Dedicated Phase 24 Screens
-        assertNotNull(new ForgotPasswordScreen());
+        assertNotNull(new ForgotPasswordWizard());
+        assertNotNull(new StaffResetCredentialsScreen());
         assertNotNull(new CategoryManagementScreen());
         assertNotNull(new LoanRepaymentScreen());
         assertNotNull(new AdminFraudScreen());
@@ -94,5 +95,8 @@ public class MockupVisualVerificationTest {
         assertNotNull(new StaffPortalScreen());
         assertNotNull(new AdminMainMenuScreen());
         assertNotNull(new UserMainMenuScreen());
+        assertNotNull(new StaffManagementScreen());
+        assertNotNull(new FraudInvestigationScreen());
+        assertNotNull(new CreateAccountScreen());
     }
 }

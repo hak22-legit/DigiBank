@@ -16,4 +16,7 @@ public class FinancialInsights {
     private BigDecimal savingsRate;      // % = (income - expenses) / income * 100
     private Optional<String> highestSpendingCategory;
     private Optional<BigDecimal> highestSpendingAmount;
+    private com.bank.service.FinancialInsightsService.MultiCurrencyTotal balanceBreakdown;
+    private com.bank.service.FinancialInsightsService.MultiCurrencyTotal incomeBreakdown;
+    private com.bank.service.FinancialInsightsService.MultiCurrencyTotal expenseBreakdown;
 }
