@@ -235,10 +235,16 @@ public class SetBudgetScreen implements Screen {
                         firstRender = true;
                     } else if (focusedField == 3) {
                         if (actionIdx == 0) {
-                            saveBudget(userEntity, selectedCategory, newLimit, now);
-                            terminal.setAttributes(origAttributes);
-                            navigator.pop();
-                            return;
+                            String err = saveBudget(userEntity, selectedCategory, newLimit, now);
+                            if (err == null) {
+                                terminal.setAttributes(origAttributes);
+                                navigator.pop();
+                                return;
+                            } else {
+                                statusMessage = err;
+                                isErrorStatus = true;
+                                firstRender = true;
+                            }
                         } else {
                             terminal.setAttributes(origAttributes);
                             navigator.pop();
@@ -250,15 +256,25 @@ public class SetBudgetScreen implements Screen {
                 } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
                     char c = event.ch();
                     if (focusedField == 1) {
+                        if (isErrorStatus) {
+                            isErrorStatus = false;
+                            statusMessage = "Ready";
+                        }
                         if ((c >= '0' && c <= '9') || (c == '.' && !limitBuf.toString().contains("."))) {
                             if (limitBuf.length() < 10) limitBuf.append(c);
                         }
                     } else if (focusedField == 3) {
                         if (c == '1') {
-                            saveBudget(userEntity, selectedCategory, newLimit, now);
-                            terminal.setAttributes(origAttributes);
-                            navigator.pop();
-                            return;
+                            String err = saveBudget(userEntity, selectedCategory, newLimit, now);
+                            if (err == null) {
+                                terminal.setAttributes(origAttributes);
+                                navigator.pop();
+                                return;
+                            } else {
+                                statusMessage = err;
+                                isErrorStatus = true;
+                                firstRender = true;
+                            }
                         } else if (c == '2') {
                             terminal.setAttributes(origAttributes);
                             navigator.pop();
@@ -274,13 +290,21 @@ public class SetBudgetScreen implements Screen {
         }
     }
 
-    private void saveBudget(User user, Category category, BigDecimal limit, LocalDate now) {
+    private String saveBudget(User user, Category category, BigDecimal limit, LocalDate now) {
         try {
             LocalDate start = now.withDayOfMonth(1);
             LocalDate end = now.withDayOfMonth(now.lengthOfMonth());
             budgetController.createBudget(user, category.getCategoryId(), limit, BudgetPeriod.MONTHLY, start, end);
+            return null;
         } catch (Exception e) {
-            logger.error("Failed to save budget", e);
+            logger.error("Failed to save budget for user {} category {}", user.getUserId(), category.getCategoryId(), e);
+            String msg = e.getMessage();
+            if (msg == null || msg.isBlank()) {
+                msg = "Failed to save budget limit.";
+            } else if (msg.contains("duplicate key value")) {
+                msg = "Budget already exists for this period.";
+            }
+            return "Save failed: " + msg;
         }
     }
 

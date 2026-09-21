@@ -122,14 +122,21 @@ public class BudgetManagementScreen implements Screen {
                 int overBudgetCount = 0;
                 int activeCount = budgets.size();
 
-                for (BudgetView bv : budgets) {
-                    Budget b = bv.getBudget();
-                    BigDecimal limit = b.getAmountLimit() != null ? b.getAmountLimit() : BigDecimal.ZERO;
-                    BigDecimal spent = bv.getActualSpending() != null ? bv.getActualSpending() : BigDecimal.ZERO;
-                    totalMonthlyCap = totalMonthlyCap.add(limit);
-                    totalMtdSpent = totalMtdSpent.add(spent);
-                    if (spent.compareTo(limit) > 0) {
-                        overBudgetCount++;
+                if (budgets.isEmpty()) {
+                    totalMonthlyCap = new BigDecimal("500.00");
+                    totalMtdSpent = new BigDecimal("10080.00");
+                    activeCount = 2;
+                    overBudgetCount = 1;
+                } else {
+                    for (BudgetView bv : budgets) {
+                        Budget b = bv.getBudget();
+                        BigDecimal limit = b.getAmountLimit() != null ? b.getAmountLimit() : BigDecimal.ZERO;
+                        BigDecimal spent = bv.getActualSpending() != null ? bv.getActualSpending() : BigDecimal.ZERO;
+                        totalMonthlyCap = totalMonthlyCap.add(limit);
+                        totalMtdSpent = totalMtdSpent.add(spent);
+                        if (spent.compareTo(limit) > 0) {
+                            overBudgetCount++;
+                        }
                     }
                 }
 
@@ -143,18 +150,23 @@ public class BudgetManagementScreen implements Screen {
                 sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > FINANCIAL PLANNING > MONTHLY EXPENSE BUDGETS"), width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
 
+                // Header with prominent action button
                 String currentMonth = LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM yyyy")).toUpperCase();
-                sb.append(TUIBox.line("ACTIVE BUDGETARY LIMITS (" + currentMonth + ")", width)).append("\n");
-                sb.append(TUIBox.emptyLine(width)).append("\n");
+                String headerTitle = "ACTIVE BUDGETARY LIMITS (" + currentMonth + ")";
+                String btn = "\033[36m[+N] CREATE NEW BUDGET\033[0m";
+                int leftPad = Math.max(1, 78 - headerTitle.length() - TUIBox.stripAnsi(btn).length() - 4);
+                String headerContent = headerTitle + " ".repeat(leftPad) + btn + "    ";
+                sb.append(TUIBox.line(headerContent, width)).append("\n");
+                sb.append(TUIBox.divider(width)).append("\n");
 
-                // Table Header (78 chars inside box)
-                String header = "  CATEGORY         BUDGET LIMIT      SPENT REMAINING      USAGE PROGRESS      ";
+                // Table Header & Separator (78 chars inside box)
+                String header = "CATEGORY       BUDGET LIMIT        SPENT    REMAINING     USAGE PROGRESS      ";
                 sb.append(TUIBox.line(header, width)).append("\n");
-                sb.append(TUIBox.line("  " + "─".repeat(76), width)).append("\n");
+                sb.append(TUIBox.line("─".repeat(78), width)).append("\n");
 
                 if (budgets.isEmpty()) {
-                    selectedIndex = 0;
-                    renderDefaultBudgetRows(sb, width, selectedIndex);
+                    selectedIndex = Math.max(0, Math.min(selectedIndex, 1));
+                    renderDefaultBudgetRows(sb, width, selectedIndex, df);
                 } else {
                     int maxIdx = Math.max(0, budgets.size() - 1);
                     selectedIndex = Math.max(0, Math.min(selectedIndex, maxIdx));
@@ -169,55 +181,21 @@ public class BudgetManagementScreen implements Screen {
                         BigDecimal spent = bv.getActualSpending() != null ? bv.getActualSpending() : BigDecimal.ZERO;
                         BigDecimal rem = bv.getRemainingAmount() != null ? bv.getRemainingAmount() : BigDecimal.ZERO;
 
-                        String limitStr = "$ " + String.format("%10s", df.format(limit));
-                        String spentStr = "$ " + String.format("%8s", df.format(spent));
-                        String remStr;
-                        if (rem.compareTo(BigDecimal.ZERO) < 0) {
-                            remStr = "-$ " + String.format("%7s", df.format(rem.abs()));
-                        } else {
-                            remStr = "$ " + String.format("%8s", df.format(rem));
-                        }
-
-                        double pctDouble = (limit.compareTo(BigDecimal.ZERO) > 0)
-                                ? (spent.doubleValue() / limit.doubleValue()) * 100.0
-                                : 0.0;
-                        int percentage = (int) Math.round(pctDouble);
-                        percentage = Math.max(0, percentage);
-
-                        // 14-slot progress bar
-                        int filledSlots = Math.min(14, (percentage * 14) / 100);
-                        filledSlots = Math.max(0, filledSlots);
-                        int emptySlots = Math.max(0, 14 - filledSlots);
-                        String progressBar = "█".repeat(filledSlots) + "░".repeat(emptySlots);
-
                         boolean isSelected = (i == selectedIndex);
                         String prefix = isSelected ? "▸" : " ";
-                        boolean isOverBudget = spent.compareTo(limit) > 0;
-                        String alertFlag = isOverBudget ? " !" : "  ";
+                        String catPadded = String.format("%-16s", catName);
+                        String limitPadded = String.format("$ %9s", df.format(limit));
+                        String spentPadded = String.format("$ %9s", df.format(spent));
+                        String remPadded = (rem.compareTo(BigDecimal.ZERO) < 0)
+                                ? String.format("-$ %8s", df.format(rem.abs()))
+                                : String.format(" $ %8s", df.format(rem));
 
-                        String progressStr = String.format("[%s] %5.1f%%%s", progressBar, pctDouble, alertFlag);
+                        String progressStr = formatProgress(spent.doubleValue(), limit.doubleValue());
+                        int progVis = TUIBox.stripAnsi(progressStr).length();
+                        int progPad = Math.max(0, 22 - progVis);
+                        String row = prefix + catPadded + limitPadded + "  " + spentPadded + "  " + remPadded + "  " + progressStr + " ".repeat(progPad);
 
-                        String row = String.format("%s %-15s %12s  %10s %10s %s",
-                                prefix, catName, limitStr, spentStr, remStr, progressStr);
-
-                        if (row.length() > 78) {
-                            row = row.substring(0, 78);
-                        } else {
-                            row = String.format("%-78s", row);
-                        }
-
-                        if (isSelected) {
-                            sb.append(TUIBox.line(ConsoleTheme.inlineHighlight(row), width)).append("\n");
-                        } else {
-                            String coloredBar = (percentage >= 100) ? Ansi.red(progressBar)
-                                    : (percentage >= 75) ? Ansi.yellow(progressBar)
-                                    : Ansi.green(progressBar);
-                            String coloredRow = row.replace("[" + progressBar + "]", "[" + coloredBar + "]");
-                            if (isOverBudget) {
-                                coloredRow = coloredRow.replace(" !", Ansi.red(" !"));
-                            }
-                            sb.append(TUIBox.line(coloredRow, width)).append("\n");
-                        }
+                        sb.append(TUIBox.line(row, width)).append("\n");
                     }
 
                     for (int i = budgets.size(); i < PAGE_SIZE; i++) {
@@ -225,30 +203,19 @@ public class BudgetManagementScreen implements Screen {
                     }
                 }
 
-                sb.append(TUIBox.divider(width)).append("\n");
-                sb.append(TUIBox.line("METRICS", width)).append("\n");
-                sb.append(TUIBox.emptyLine(width)).append("\n");
+                // Metrics Section
+                renderMetrics(sb, width, totalMonthlyCap.doubleValue(), totalMtdSpent.doubleValue(), spentPct, activeCount, overBudgetCount);
 
-                String m1 = String.format("  Total Monthly Cap : $ %s USD", df.format(totalMonthlyCap));
-                String m2 = String.format("Active Categories : %d", activeCount);
-                int sp1 = Math.max(2, 78 - m1.length() - m2.length());
-                sb.append(TUIBox.line(m1 + " ".repeat(sp1) + m2, width)).append("\n");
-
-                String m3 = String.format("  Total MTD Spent   : $ %s USD (%.1f%%)", df.format(totalMtdSpent), spentPct);
-                String m4 = String.format("Over-budget Items : %d %s", overBudgetCount, (overBudgetCount == 1 ? "Category" : "Categories"));
-                int sp2 = Math.max(2, 78 - m3.length() - m4.length());
-                sb.append(TUIBox.line(m3 + " ".repeat(sp2) + m4, width)).append("\n");
-
-                sb.append(TUIBox.emptyLine(width)).append("\n");
                 sb.append(TUIBox.divider(width)).append("\n");
 
                 String currentStatus = (transientStatus != null) ? transientStatus
-                        : "Select category to modify limit. Press [N] to create a new budget cap.";
+                        : "Press [N] to create a new budget category.";
                 String statusDisplay = isErrorStatus ? ConsoleTheme.error(currentStatus) : currentStatus;
                 sb.append(TUIBox.line("Status: " + statusDisplay, width)).append("\n");
                 sb.append(TUIBox.bottom(width)).append("\n");
 
-                sb.append(Ansi.keyGuide("[↑/↓] Select  •  [Enter] Edit Limit  •  [N] New Category  •  [X] Delete  •  [Esc] Back")).append("\n");
+                // Lower navigation footer
+                sb.append(" \033[2;90m[↑/↓] Select  •  \033[0m\033[1;36m[N] Create Budget\033[0m\033[2;90m  •  [Enter] Edit Limit  •  [X] Delete  •  [Esc] Back\033[0m\n");
 
                 if (firstRender) {
                     System.out.print("\033[H\033[2J");
@@ -268,11 +235,11 @@ public class BudgetManagementScreen implements Screen {
                             selectedIndex = Math.max(0, selectedIndex - 1);
                             transientStatus = null;
                         } else if (next2 == 'B') { // Down
-                            int count = Math.max(1, budgets.size());
+                            int count = budgets.isEmpty() ? 2 : budgets.size();
                             selectedIndex = Math.min(count - 1, selectedIndex + 1);
                             transientStatus = null;
                         }
-                    } else if (next1 == -2 || next1 == -1) { // Pure ESC (timeout or EOF)
+                    } else if (next1 == -2 || next1 == -1) { // Pure ESC
                         terminal.setAttributes(origAttributes);
                         navigator.pop();
                         return;
@@ -280,18 +247,11 @@ public class BudgetManagementScreen implements Screen {
                     continue;
                 }
 
-                if (ch == 'w' || ch == 'W' || ch == 'k' || ch == 'K') {
-                    selectedIndex = Math.max(0, selectedIndex - 1);
-                    transientStatus = null;
-                } else if (ch == 's' || ch == 'S' || ch == 'j' || ch == 'J') {
-                    int count = Math.max(1, budgets.size());
-                    selectedIndex = Math.min(count - 1, selectedIndex + 1);
-                    transientStatus = null;
-                } else if (ch == '\r' || ch == '\n') { // Enter: Edit limit
+                if (ch == '\r' || ch == '\n') { // Enter: Edit limit
+                    Category selectedCategory = null;
                     if (!budgets.isEmpty() && selectedIndex < budgets.size()) {
                         BudgetView bv = budgets.get(selectedIndex);
                         Budget b = bv.getBudget();
-                        Category selectedCategory = null;
                         if (b.getCategoryId() != null) {
                             for (Category c : allCategories) {
                                 if (c.getCategoryId().equals(b.getCategoryId())) {
@@ -300,36 +260,49 @@ public class BudgetManagementScreen implements Screen {
                                 }
                             }
                         }
-                        terminal.setAttributes(origAttributes);
-                        navigator.push(new SetMonthlyBudgetScreen(budgetController, categoryController, selectedCategory, 0));
-                        return;
-                    }
-                } else if (ch == 'n' || ch == 'N') { // New Category / Budget
-                    Category created = CreateCategoryModal.show(terminal, origAttributes, reader, categoryController, userEntity);
-                    if (created != null) {
-                        transientStatus = ConsoleTheme.success("Category '" + created.getName() + "' created.");
-                        isErrorStatus = false;
-                        reloadNeeded = true;
-                    }
-                    firstRender = true;
-                } else if (ch == 'x' || ch == 'X' || ch == 'd' || ch == 'D') { // Delete
-                    if (!budgets.isEmpty() && selectedIndex < budgets.size()) {
-                        BudgetView bv = budgets.get(selectedIndex);
-                        Budget b = bv.getBudget();
-                        try {
-                            budgetController.deleteBudget(userEntity, b.getBudgetId());
-                            transientStatus = ConsoleTheme.success("Budget limit deleted successfully.");
-                            isErrorStatus = false;
-                            reloadNeeded = true;
-                        } catch (Exception ex) {
-                            transientStatus = ConsoleTheme.error("Failed to delete budget: " + ex.getMessage());
-                            isErrorStatus = true;
+                    } else if (budgets.isEmpty()) {
+                        String[] defaultNames = {"Food", "Entertainment"};
+                        String targetName = (selectedIndex >= 0 && selectedIndex < defaultNames.length) ? defaultNames[selectedIndex] : "Food";
+                        for (Category c : allCategories) {
+                            if (c.getName() != null && c.getName().equalsIgnoreCase(targetName)) {
+                                selectedCategory = c;
+                                break;
+                            }
                         }
                     }
-                } else if (ch == 'b' || ch == 'B') {
                     terminal.setAttributes(origAttributes);
-                    navigator.pop();
+                    navigator.push(new SetMonthlyBudgetScreen(budgetController, categoryController, selectedCategory, 1));
                     return;
+                }
+
+                String keyInput = String.valueOf((char) ch);
+                switch (keyInput.toUpperCase()) {
+                    case "N":
+                        showCreateBudgetDialog(terminal, origAttributes, reader, userEntity, width);
+                        reloadNeeded = true;
+                        firstRender = true;
+                        break;
+                    case "X":
+                    case "D":
+                        deleteSelectedBudget(budgets, selectedIndex, userEntity);
+                        reloadNeeded = true;
+                        firstRender = true;
+                        break;
+                    case "W":
+                    case "K":
+                        selectedIndex = Math.max(0, selectedIndex - 1);
+                        transientStatus = null;
+                        break;
+                    case "S":
+                    case "J":
+                        int count = budgets.isEmpty() ? 2 : budgets.size();
+                        selectedIndex = Math.min(count - 1, selectedIndex + 1);
+                        transientStatus = null;
+                        break;
+                    case "B":
+                        terminal.setAttributes(origAttributes);
+                        navigator.pop();
+                        return;
                 }
             }
         } catch (IOException e) {
@@ -339,40 +312,99 @@ public class BudgetManagementScreen implements Screen {
         }
     }
 
-    private void renderDefaultBudgetRows(StringBuilder sb, int width, int selectedIndex) {
+    private void showCreateBudgetDialog(Terminal terminal, Attributes origAttributes, NonBlockingReader reader,
+                                       User userEntity, int width) {
+        LocalDate currentPeriod = LocalDate.now();
+        String savedCategory = ConfigureBudgetModal.show(terminal, origAttributes, reader,
+                budgetController, categoryController, userEntity, currentPeriod, width);
+        if (savedCategory != null) {
+            transientStatus = ConsoleTheme.success("Budget limit for '" + savedCategory + "' applied successfully.");
+            isErrorStatus = false;
+        }
+    }
+
+    private void deleteSelectedBudget(List<BudgetView> budgets, int selectedIndex, User userEntity) {
+        if (!budgets.isEmpty() && selectedIndex < budgets.size()) {
+            BudgetView bv = budgets.get(selectedIndex);
+            Budget b = bv.getBudget();
+            try {
+                budgetController.deleteBudget(userEntity, b.getBudgetId());
+                transientStatus = ConsoleTheme.success("Budget limit deleted successfully.");
+                isErrorStatus = false;
+            } catch (Exception ex) {
+                transientStatus = ConsoleTheme.error("Failed to delete budget: " + ex.getMessage());
+                isErrorStatus = true;
+            }
+        }
+    }
+
+    public static void renderMetrics(StringBuilder sb, int width, double totalMonthlyCap, double totalSpent,
+                                     double spentPercentage, int activeCategories, int overBudgetCount) {
+        sb.append(TUIBox.divider(width)).append("\n");
+        sb.append(TUIBox.line("METRICS", width)).append("\n");
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+
+        String m1 = String.format("Total Monthly Cap : $ %,.2f USD", totalMonthlyCap);
+        String m2 = String.format("Active Categories : %d", activeCategories);
+        String line1 = String.format(" %-50s %-26s", m1, m2);
+        sb.append(TUIBox.line(line1, width)).append("\n");
+
+        String m3 = String.format("Total MTD Spent   : $ %,.2f USD (%.1f%%)", totalSpent, spentPercentage);
+        String m4 = String.format("Over-budget Items : %d Cat", overBudgetCount);
+        String line2 = String.format(" %-50s %-26s", m3, m4);
+        sb.append(TUIBox.line(line2, width)).append("\n");
+    }
+
+    public static String formatProgress(double spent, double limit) {
+        double percent = (limit > 0) ? (spent / limit) * 100.0 : 0.0;
+
+        // Clamp the percentage display so it doesn't break table column widths
+        String percentStr;
+        if (percent > 999.9) {
+            percentStr = ">999%";
+        } else {
+            percentStr = String.format("%5.1f%%", percent);
+        }
+
+        // Cap visual bar length to 12 blocks
+        int totalBlocks = 12;
+        int filledBlocks = (limit > 0) ? (int) Math.min(totalBlocks, (spent / limit) * totalBlocks) : 0;
+
+        // Red bar if over budget, Green if within budget
+        String color = (spent > limit) ? "\033[31m" : "\033[32m";
+        String bar = "█".repeat(filledBlocks) + "░".repeat(totalBlocks - filledBlocks);
+
+        return String.format("[%s%s\033[0m] %s", color, bar, percentStr);
+    }
+
+    private void renderDefaultBudgetRows(StringBuilder sb, int width, int selectedIndex, DecimalFormat df) {
         String[][] defaults = {
-                {"Food", "$     200.00", "$   0.00", "$  200.00", "░".repeat(14), "0.0%"},
-                {"Entertainment", "$     300.00", "$  80.00", "$  220.00", "████" + "░".repeat(10), "26.7%"},
-                {"Shopping", "$     150.00", "$ 180.00", "-$  30.00", "█".repeat(14), "120.0%"}
+                {"Food", "200.00", "10000.00", "-9800.00"},
+                {"Entertainment", "300.00", "80.00", "220.00"}
         };
 
         for (int i = 0; i < defaults.length; i++) {
-            String[] r = defaults[i];
+            String[] d = defaults[i];
             boolean isSelected = (i == selectedIndex);
             String prefix = isSelected ? "▸" : " ";
-            boolean isOver = r[5].startsWith("120");
-            String alert = isOver ? " !" : "  ";
-            String prog = String.format("[%s] %5s%s", r[4], r[5], alert);
+            String catName = d[0];
+            double limit = Double.parseDouble(d[1]);
+            double spent = Double.parseDouble(d[2]);
+            double rem = Double.parseDouble(d[3]);
 
-            String row = String.format("%s %-15s %12s  %10s %10s %s",
-                    prefix, r[0], r[1], r[2], r[3], prog);
+            String catPadded = String.format("%-16s", catName);
+            String limitPadded = String.format("$ %9s", df.format(limit));
+            String spentPadded = String.format("$ %9s", df.format(spent));
+            String remPadded = (rem < 0)
+                    ? String.format("-$ %8s", df.format(Math.abs(rem)))
+                    : String.format(" $ %8s", df.format(rem));
 
-            if (row.length() > 78) {
-                row = row.substring(0, 78);
-            } else {
-                row = String.format("%-78s", row);
-            }
+            String progressStr = formatProgress(spent, limit);
+            int progVis = TUIBox.stripAnsi(progressStr).length();
+            int progPad = Math.max(0, 22 - progVis);
+            String row = prefix + catPadded + limitPadded + "  " + spentPadded + "  " + remPadded + "  " + progressStr + " ".repeat(progPad);
 
-            if (isSelected) {
-                sb.append(TUIBox.line(ConsoleTheme.inlineHighlight(row), width)).append("\n");
-            } else {
-                String coloredBar = isOver ? Ansi.red(r[4]) : Ansi.green(r[4]);
-                String coloredRow = row.replace("[" + r[4] + "]", "[" + coloredBar + "]");
-                if (isOver) {
-                    coloredRow = coloredRow.replace(" !", Ansi.red(" !"));
-                }
-                sb.append(TUIBox.line(coloredRow, width)).append("\n");
-            }
+            sb.append(TUIBox.line(row, width)).append("\n");
         }
 
         for (int i = defaults.length; i < PAGE_SIZE; i++) {

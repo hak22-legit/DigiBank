@@ -114,6 +114,9 @@ public class SetMonthlyBudgetScreen implements Screen {
         String currentMonthName = now.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
         String periodDisplay = String.format("Current Month (%s %d)", currentMonthName, now.getYear());
 
+        String statusMessage = null;
+        boolean isErrorStatus = false;
+
         Terminal terminal = session.getTerminal();
         Attributes origAttributes = terminal.enterRawMode();
         NonBlockingReader reader = terminal.reader();
@@ -226,8 +229,14 @@ public class SetMonthlyBudgetScreen implements Screen {
                 sb.append(TUIBox.line("  " + act1 + "                         " + act2, width)).append("\n");
 
                 sb.append(TUIBox.divider(width)).append("\n");
-                String statusMessage = "Ready to commit budget limits for " + selectedCategory.getName() + ".";
-                sb.append(TUIBox.line("Status: " + statusMessage, width)).append("\n");
+                String defaultStatus = "Ready to commit budget limits for " + selectedCategory.getName() + ".";
+                String displayStatus = (statusMessage != null) ? statusMessage : defaultStatus;
+                int maxStatusLen = width - 12;
+                if (displayStatus.length() > maxStatusLen) {
+                    displayStatus = displayStatus.substring(0, maxStatusLen - 3) + "...";
+                }
+                String statusLine = isErrorStatus ? ConsoleTheme.error(displayStatus) : displayStatus;
+                sb.append(TUIBox.line("Status: " + statusLine, width)).append("\n");
                 sb.append(TUIBox.bottom(width)).append("\n");
                 sb.append(ConsoleTheme.keyGuide("[Tab/↓] Next Field  •  [Enter] Action / Edit  •  [1/2] Quick Action  •  [Esc]")).append("\n");
 
@@ -246,6 +255,10 @@ public class SetMonthlyBudgetScreen implements Screen {
                 } else if (focusedField == 3 && (event.action() == KeyAction.LEFT || event.action() == KeyAction.RIGHT)) {
                     actionIdx = (actionIdx == 0) ? 1 : 0;
                 } else if (focusedField == 1 && event.action() == KeyAction.BACKSPACE) {
+                    if (isErrorStatus) {
+                        isErrorStatus = false;
+                        statusMessage = null;
+                    }
                     if (limitBuf.length() > 0) limitBuf.deleteCharAt(limitBuf.length() - 1);
                 } else if (event.action() == KeyAction.ENTER) {
                     if (focusedField == 0) {
@@ -255,15 +268,23 @@ public class SetMonthlyBudgetScreen implements Screen {
                         if (chosen != null) {
                             selectedCategory = chosen;
                             focusedField = 1;
+                            isErrorStatus = false;
+                            statusMessage = null;
                         }
                         // Force clean screen repaint upon return
                         firstRender = true;
                     } else if (focusedField == 3) {
                         if (actionIdx == 0) {
-                            saveBudget(userEntity, selectedCategory, newLimit, now);
-                            terminal.setAttributes(origAttributes);
-                            navigator.pop();
-                            return;
+                            String err = saveBudget(userEntity, selectedCategory, newLimit, now);
+                            if (err == null) {
+                                terminal.setAttributes(origAttributes);
+                                navigator.pop();
+                                return;
+                            } else {
+                                statusMessage = err;
+                                isErrorStatus = true;
+                                firstRender = true;
+                            }
                         } else {
                             terminal.setAttributes(origAttributes);
                             navigator.pop();
@@ -275,15 +296,25 @@ public class SetMonthlyBudgetScreen implements Screen {
                 } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
                     char c = event.ch();
                     if (focusedField == 1) {
+                        if (isErrorStatus) {
+                            isErrorStatus = false;
+                            statusMessage = null;
+                        }
                         if ((c >= '0' && c <= '9') || (c == '.' && !limitBuf.toString().contains("."))) {
                             if (limitBuf.length() < 10) limitBuf.append(c);
                         }
                     } else if (focusedField == 3) {
                         if (c == '1') {
-                            saveBudget(userEntity, selectedCategory, newLimit, now);
-                            terminal.setAttributes(origAttributes);
-                            navigator.pop();
-                            return;
+                            String err = saveBudget(userEntity, selectedCategory, newLimit, now);
+                            if (err == null) {
+                                terminal.setAttributes(origAttributes);
+                                navigator.pop();
+                                return;
+                            } else {
+                                statusMessage = err;
+                                isErrorStatus = true;
+                                firstRender = true;
+                            }
                         } else if (c == '2') {
                             terminal.setAttributes(origAttributes);
                             navigator.pop();
@@ -299,13 +330,21 @@ public class SetMonthlyBudgetScreen implements Screen {
         }
     }
 
-    private void saveBudget(User user, Category category, BigDecimal limit, LocalDate now) {
+    private String saveBudget(User user, Category category, BigDecimal limit, LocalDate now) {
         try {
             LocalDate start = now.withDayOfMonth(1);
             LocalDate end = now.withDayOfMonth(now.lengthOfMonth());
             budgetController.createBudget(user, category.getCategoryId(), limit, BudgetPeriod.MONTHLY, start, end);
+            return null;
         } catch (Exception e) {
-            logger.error("Failed to save budget", e);
+            logger.error("Failed to save budget for user {} category {}", user.getUserId(), category.getCategoryId(), e);
+            String msg = e.getMessage();
+            if (msg == null || msg.isBlank()) {
+                msg = "Failed to save budget limit.";
+            } else if (msg.contains("duplicate key value")) {
+                msg = "Budget already exists for this period.";
+            }
+            return "Save failed: " + msg;
         }
     }
 

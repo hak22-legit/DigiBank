@@ -15,6 +15,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class BudgetService {
@@ -51,11 +52,25 @@ public class BudgetService {
             throw new IllegalArgumentException("Budget amount must be greater than zero");
         }
 
+        BudgetPeriod effectivePeriod = (period != null) ? period : BudgetPeriod.MONTHLY;
+
+        // Check if a budget record already exists for (user_id, category_id, period, start_date)
+        Optional<Budget> existingOpt = budgetRepository.findByUserAndCategoryAndPeriodAndStartDate(
+                user.getUserId(), categoryId, effectivePeriod, startDate);
+
+        if (existingOpt.isPresent()) {
+            Budget existing = existingOpt.get();
+            existing.setAmountLimit(amountLimit);
+            existing.setEndDate(endDate);
+            existing.setStatus(BudgetStatus.ACTIVE);
+            return budgetRepository.save(existing);
+        }
+
         Budget budget = Budget.builder()
                 .userId(user.getUserId())
                 .categoryId(categoryId)
                 .amountLimit(amountLimit)
-                .period(period)
+                .period(effectivePeriod)
                 .startDate(startDate)
                 .endDate(endDate)
                 .status(BudgetStatus.ACTIVE)
@@ -188,5 +203,24 @@ public class BudgetService {
         }
 
         return budgetRepository.deleteById(budgetId);
+    }
+
+    public List<com.bank.model.dto.UnbudgetedCategory> getUnbudgetedCategories(User user, int month, int year) {
+        return budgetRepository.getUnbudgetedCategories(user.getUserId(), month, year);
+    }
+
+    public Long configureBudget(User user, String categoryName, BigDecimal monthlyCap, int month, int year) {
+        return configureBudget(user, null, categoryName, monthlyCap, month, year);
+    }
+
+    public Long configureBudget(User user, Long categoryId, String categoryName, BigDecimal monthlyCap, int month, int year) {
+        String trimmed = (categoryName != null) ? categoryName.trim() : "";
+        if (categoryId == null && (trimmed.length() < 3 || trimmed.length() > 20)) {
+            throw new IllegalArgumentException("Category name must be 3-20 characters");
+        }
+        if (monthlyCap == null || monthlyCap.compareTo(new BigDecimal("1.00")) < 0) {
+            throw new IllegalArgumentException("Monthly Cap must be at least $1.00");
+        }
+        return budgetRepository.upsertCategoryAndBudgetLimit(user.getUserId(), categoryId, trimmed, monthlyCap.setScale(2, RoundingMode.HALF_UP), month, year);
     }
 }
