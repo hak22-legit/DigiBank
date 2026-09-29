@@ -31,7 +31,9 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * SUPER ADMIN > VAULT MONITOR > ACCOUNT STATEMENT LEDGER (82 Columns)
@@ -192,7 +194,23 @@ public class AccountStatementLedgerScreen implements Screen {
         // Transaction Data Rows
         if (transactions != null && !transactions.isEmpty()) {
             int endIndex = Math.min(scrollOffset + pageSize, transactions.size());
-            BigDecimal runningBal = bal;
+            Map<Long, BigDecimal> runningBalances = new HashMap<>();
+            BigDecimal running = bal;
+            for (Transaction t : transactions) {
+                if (t != null && t.getTransactionId() != null) {
+                    runningBalances.put(t.getTransactionId(), running);
+                    BigDecimal settledAmt = (account != null && account.getAccountId() != null)
+                            ? t.getAmountForAccount(account.getAccountId()) : t.getAmount();
+                    if (settledAmt == null) settledAmt = BigDecimal.ZERO;
+                    boolean isCredit = (t.getTransactionType() == TransactionType.DEPOSIT || t.getTransactionType() == TransactionType.LOAN_DISBURSEMENT)
+                            || (t.getTransactionType() == TransactionType.TRANSFER && account != null && account.getAccountId() != null && account.getAccountId().equals(t.getRelatedAccountId()));
+                    if (isCredit) {
+                        running = running.subtract(settledAmt);
+                    } else {
+                        running = running.add(settledAmt);
+                    }
+                }
+            }
 
             for (int i = scrollOffset; i < endIndex; i++) {
                 Transaction txn = transactions.get(i);
@@ -211,7 +229,9 @@ public class AccountStatementLedgerScreen implements Screen {
                         isPositive = true;
                     } else if (tt == TransactionType.TRANSFER) {
                         typeStr = "TRANSFER";
-                        isPositive = false;
+                        boolean isDestination = account != null && account.getAccountId() != null
+                                && account.getAccountId().equals(txn.getRelatedAccountId());
+                        isPositive = isDestination;
                     } else if (tt == TransactionType.WITHDRAWAL) {
                         typeStr = "WITHDRAW";
                         isPositive = false;
@@ -225,9 +245,12 @@ public class AccountStatementLedgerScreen implements Screen {
                     desc = desc.substring(0, 14) + "...";
                 }
 
-                BigDecimal amt = txn.getAmount() != null ? txn.getAmount() : BigDecimal.ZERO;
+                BigDecimal amt = (account != null && account.getAccountId() != null)
+                        ? txn.getAmountForAccount(account.getAccountId()) : txn.getAmount();
+                if (amt == null) amt = BigDecimal.ZERO;
                 String amtStr = (isPositive ? "+" : "-") + String.format("%,9.2f", amt.abs());
-                String rBalStr = String.format("%,8.2f", runningBal);
+                BigDecimal currentBal = runningBalances.getOrDefault(txn.getTransactionId(), bal);
+                String rBalStr = String.format("%,8.2f", currentBal);
 
                 String plainRow = String.format("%-17s%-11s%-12s%-19s%11s%8s",
                         dtStr, txnIdStr, typeStr, desc, amtStr, rBalStr);

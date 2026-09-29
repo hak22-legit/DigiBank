@@ -122,21 +122,14 @@ public class BudgetManagementScreen implements Screen {
                 int overBudgetCount = 0;
                 int activeCount = budgets.size();
 
-                if (budgets.isEmpty()) {
-                    totalMonthlyCap = new BigDecimal("500.00");
-                    totalMtdSpent = new BigDecimal("10080.00");
-                    activeCount = 2;
-                    overBudgetCount = 1;
-                } else {
-                    for (BudgetView bv : budgets) {
-                        Budget b = bv.getBudget();
-                        BigDecimal limit = b.getAmountLimit() != null ? b.getAmountLimit() : BigDecimal.ZERO;
-                        BigDecimal spent = bv.getActualSpending() != null ? bv.getActualSpending() : BigDecimal.ZERO;
-                        totalMonthlyCap = totalMonthlyCap.add(limit);
-                        totalMtdSpent = totalMtdSpent.add(spent);
-                        if (spent.compareTo(limit) > 0) {
-                            overBudgetCount++;
-                        }
+                for (BudgetView bv : budgets) {
+                    Budget b = bv.getBudget();
+                    BigDecimal limit = b.getAmountLimit() != null ? b.getAmountLimit() : BigDecimal.ZERO;
+                    BigDecimal spent = bv.getActualSpending() != null ? bv.getActualSpending() : BigDecimal.ZERO;
+                    totalMonthlyCap = totalMonthlyCap.add(limit);
+                    totalMtdSpent = totalMtdSpent.add(spent);
+                    if (spent.compareTo(limit) > 0) {
+                        overBudgetCount++;
                     }
                 }
 
@@ -165,8 +158,14 @@ public class BudgetManagementScreen implements Screen {
                 sb.append(TUIBox.line("─".repeat(78), width)).append("\n");
 
                 if (budgets.isEmpty()) {
-                    selectedIndex = Math.max(0, Math.min(selectedIndex, 1));
-                    renderDefaultBudgetRows(sb, width, selectedIndex, df);
+                    selectedIndex = 0;
+                    for (int i = 0; i < PAGE_SIZE; i++) {
+                        if (i == 2) {
+                            sb.append(TUIBox.line(ConsoleTheme.muted("  No active records found. Press [N] to create."), width)).append("\n");
+                        } else {
+                            sb.append(TUIBox.emptyLine(width)).append("\n");
+                        }
+                    }
                 } else {
                     int maxIdx = Math.max(0, budgets.size() - 1);
                     selectedIndex = Math.max(0, Math.min(selectedIndex, maxIdx));
@@ -209,7 +208,7 @@ public class BudgetManagementScreen implements Screen {
                 sb.append(TUIBox.divider(width)).append("\n");
 
                 String currentStatus = (transientStatus != null) ? transientStatus
-                        : "Press [N] to create a new budget category.";
+                        : (budgets.isEmpty() ? "No active records found. Press [N] to create." : "Press [N] to create a new budget category.");
                 String statusDisplay = isErrorStatus ? ConsoleTheme.error(currentStatus) : currentStatus;
                 sb.append(TUIBox.line("Status: " + statusDisplay, width)).append("\n");
                 sb.append(TUIBox.bottom(width)).append("\n");
@@ -248,8 +247,14 @@ public class BudgetManagementScreen implements Screen {
                 }
 
                 if (ch == '\r' || ch == '\n') { // Enter: Edit limit
+                    if (budgets.isEmpty()) {
+                        showCreateBudgetDialog(terminal, origAttributes, reader, userEntity, width);
+                        reloadNeeded = true;
+                        firstRender = true;
+                        continue;
+                    }
                     Category selectedCategory = null;
-                    if (!budgets.isEmpty() && selectedIndex < budgets.size()) {
+                    if (selectedIndex < budgets.size()) {
                         BudgetView bv = budgets.get(selectedIndex);
                         Budget b = bv.getBudget();
                         if (b.getCategoryId() != null) {
@@ -258,15 +263,6 @@ public class BudgetManagementScreen implements Screen {
                                     selectedCategory = c;
                                     break;
                                 }
-                            }
-                        }
-                    } else if (budgets.isEmpty()) {
-                        String[] defaultNames = {"Food", "Entertainment"};
-                        String targetName = (selectedIndex >= 0 && selectedIndex < defaultNames.length) ? defaultNames[selectedIndex] : "Food";
-                        for (Category c : allCategories) {
-                            if (c.getName() != null && c.getName().equalsIgnoreCase(targetName)) {
-                                selectedCategory = c;
-                                break;
                             }
                         }
                     }
@@ -295,8 +291,10 @@ public class BudgetManagementScreen implements Screen {
                         break;
                     case "S":
                     case "J":
-                        int count = budgets.isEmpty() ? 2 : budgets.size();
-                        selectedIndex = Math.min(count - 1, selectedIndex + 1);
+                        int count = budgets.size();
+                        if (count > 0) {
+                            selectedIndex = Math.min(count - 1, selectedIndex + 1);
+                        }
                         transientStatus = null;
                         break;
                     case "B":

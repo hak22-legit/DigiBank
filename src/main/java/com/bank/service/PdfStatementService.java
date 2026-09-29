@@ -250,6 +250,13 @@ public class PdfStatementService {
         amtCell.addElement(new Paragraph("SETTLEMENT AMOUNT", labelFont));
 
         BigDecimal amt = (tx != null && tx.getAmount() != null) ? tx.getAmount() : BigDecimal.ZERO;
+        if (tx != null && tx.isCrossCurrency()) {
+            if (currency == tx.getDestinationCurrency()) {
+                amt = tx.getDestinationAmount();
+            } else if (currency == tx.getCurrency()) {
+                amt = tx.getAmount();
+            }
+        }
         String sym = (currency == Currency.KHR) ? "KHR " : "$ ";
         String amtFormatted = sym + DF.format(amt) + " " + currency;
 

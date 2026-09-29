@@ -26,6 +26,10 @@ public class LoanController {
         return loanService.getUserLoans(user);
     }
 
+    public List<LoanDTO> getUserLoans(Long userId) {
+        return loanService.getUserLoans(userId);
+    }
+
     public LoanDTO repayLoan(User user, Long loanId, Long accountId, BigDecimal amount) {
         return loanRepaymentService.makePayment(user, loanId, accountId, amount);
     }

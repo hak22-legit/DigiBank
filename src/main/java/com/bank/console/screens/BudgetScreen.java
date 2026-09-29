@@ -176,20 +176,16 @@ public class BudgetScreen implements Screen {
                     }
 
                     totalMonthlyCap = BigDecimal.ZERO;
-                    if (budgets.isEmpty()) {
-                        totalMonthlyCap = new BigDecimal("470.00");
-                    } else {
-                        for (BudgetView bv : budgets) {
-                            if (bv.getBudget() != null && bv.getBudget().getAmountLimit() != null) {
-                                totalMonthlyCap = totalMonthlyCap.add(bv.getBudget().getAmountLimit());
-                            }
+                    for (BudgetView bv : budgets) {
+                        if (bv.getBudget() != null && bv.getBudget().getAmountLimit() != null) {
+                            totalMonthlyCap = totalMonthlyCap.add(bv.getBudget().getAmountLimit());
                         }
                     }
 
                     totalBudgetPages = Math.max(1, (int) Math.ceil((double) budgets.size() / PAGE_SIZE));
                     budgetPage = Math.min(budgetPage, totalBudgetPages);
 
-                    int goalCount = goals.isEmpty() ? 5 : goals.size();
+                    int goalCount = goals.size();
                     totalGoalPages = Math.max(1, (int) Math.ceil((double) goalCount / PAGE_SIZE));
                     goalPage = Math.min(goalPage, totalGoalPages);
 
@@ -225,8 +221,14 @@ public class BudgetScreen implements Screen {
                     sb.append(TUIBox.line(" " + "─".repeat(76) + " ", width)).append("\n");
 
                     if (budgets.isEmpty()) {
-                        selectedBudgetIndex = Math.max(0, Math.min(selectedBudgetIndex, 4));
-                        renderDefaultBudgetRows(sb, width, selectedBudgetIndex);
+                        selectedBudgetIndex = 0;
+                        for (int i = 0; i < PAGE_SIZE; i++) {
+                            if (i == 2) {
+                                sb.append(TUIBox.line(ConsoleTheme.muted("  No active records found. Press [N] to create."), width)).append("\n");
+                            } else {
+                                sb.append(TUIBox.emptyLine(width)).append("\n");
+                            }
+                        }
                     } else {
                         int startIdx = (budgetPage - 1) * PAGE_SIZE;
                         int endIdx = Math.min(startIdx + PAGE_SIZE, budgets.size());
@@ -293,60 +295,66 @@ public class BudgetScreen implements Screen {
                     sb.append(TUIBox.line(header, width)).append("\n");
                     sb.append(TUIBox.line(" " + "─".repeat(76) + " ", width)).append("\n");
 
-                    List<SavingGoal> displayGoals;
-                    if (goals.isEmpty()) {
-                        displayGoals = createDefaultGoals(userEntity);
+                    List<SavingGoal> displayGoals = goals;
+
+                    if (displayGoals.isEmpty()) {
+                        currentSelectedGoal = null;
+                        for (int i = 0; i < PAGE_SIZE; i++) {
+                            if (i == 2) {
+                                sb.append(TUIBox.line(ConsoleTheme.muted("  No active records found. Press [C] to create."), width)).append("\n");
+                            } else {
+                                sb.append(TUIBox.emptyLine(width)).append("\n");
+                            }
+                        }
                     } else {
-                        displayGoals = goals;
-                    }
+                        int startIdx = (goalPage - 1) * PAGE_SIZE;
+                        int endIdx = Math.min(startIdx + PAGE_SIZE, displayGoals.size());
+                        int pageCount = Math.max(1, endIdx - startIdx);
+                        selectedGoalIndex = Math.max(0, Math.min(selectedGoalIndex, pageCount - 1));
 
-                    int startIdx = (goalPage - 1) * PAGE_SIZE;
-                    int endIdx = Math.min(startIdx + PAGE_SIZE, displayGoals.size());
-                    int pageCount = Math.max(1, endIdx - startIdx);
-                    selectedGoalIndex = Math.max(0, Math.min(selectedGoalIndex, pageCount - 1));
+                        for (int i = startIdx; i < endIdx; i++) {
+                            SavingGoal g = displayGoals.get(i);
+                            boolean isSelected = (i - startIdx == selectedGoalIndex);
+                            if (isSelected) {
+                                currentSelectedGoal = g;
+                            }
+                            String prefix = isSelected ? "  ▸ " : "    ";
 
-                    for (int i = startIdx; i < endIdx; i++) {
-                        SavingGoal g = displayGoals.get(i);
-                        boolean isSelected = (i - startIdx == selectedGoalIndex);
-                        if (isSelected) {
-                            currentSelectedGoal = g;
+                            String name = g.getName();
+                            if (name.length() > 15) name = name.substring(0, 15);
+
+                            BigDecimal target = g.getTargetAmount() != null ? g.getTargetAmount() : BigDecimal.ONE;
+                            BigDecimal current = g.getCurrentAmount() != null ? g.getCurrentAmount() : BigDecimal.ZERO;
+                            String targetStr = "$" + String.format("%10s", df.format(target));
+                            String currentStr = "$" + String.format("%10s", df.format(current));
+                            String dateStr = g.getDeadline() != null ? g.getDeadline().format(dfDate) : "2026-12-31";
+
+                            int pct = (target.compareTo(BigDecimal.ZERO) > 0)
+                                    ? (int) Math.round((current.doubleValue() / target.doubleValue()) * 100)
+                                    : 0;
+                            pct = Math.max(0, pct);
+                            int filledSlots = Math.min(16, (pct * 16) / 100);
+                            filledSlots = Math.max(0, filledSlots);
+                            int emptySlots = Math.max(0, 16 - filledSlots);
+                            String progressBar = "█".repeat(filledSlots) + "░".repeat(emptySlots);
+
+                            String row = String.format("%s%-15s %11s %11s  %-10s [%-16s]%3d%%",
+                                    prefix, name, targetStr, currentStr, dateStr, progressBar, Math.min(999, pct));
+
+                            if (isSelected) {
+                                sb.append(TUIBox.line(ConsoleTheme.inlineHighlight(row), width)).append("\n");
+                            } else {
+                                String coloredBar = (pct >= 100) ? Ansi.green(progressBar)
+                                        : (pct >= 50) ? Ansi.cyan(progressBar)
+                                        : Ansi.yellow(progressBar);
+                                String coloredRow = row.replace("[" + progressBar + "]", "[" + coloredBar + "]");
+                                sb.append(TUIBox.line(coloredRow, width)).append("\n");
+                            }
                         }
-                        String prefix = isSelected ? "  ▸ " : "    ";
 
-                        String name = g.getName();
-                        if (name.length() > 15) name = name.substring(0, 15);
-
-                        BigDecimal target = g.getTargetAmount() != null ? g.getTargetAmount() : BigDecimal.ONE;
-                        BigDecimal current = g.getCurrentAmount() != null ? g.getCurrentAmount() : BigDecimal.ZERO;
-                        String targetStr = "$" + String.format("%10s", df.format(target));
-                        String currentStr = "$" + String.format("%10s", df.format(current));
-                        String dateStr = g.getDeadline() != null ? g.getDeadline().format(dfDate) : "2026-12-31";
-
-                        int pct = (target.compareTo(BigDecimal.ZERO) > 0)
-                                ? (int) Math.round((current.doubleValue() / target.doubleValue()) * 100)
-                                : 0;
-                        pct = Math.max(0, pct);
-                        int filledSlots = Math.min(16, (pct * 16) / 100);
-                        filledSlots = Math.max(0, filledSlots);
-                        int emptySlots = Math.max(0, 16 - filledSlots);
-                        String progressBar = "█".repeat(filledSlots) + "░".repeat(emptySlots);
-
-                        String row = String.format("%s%-15s %11s %11s  %-10s [%-16s]%3d%%",
-                                prefix, name, targetStr, currentStr, dateStr, progressBar, Math.min(999, pct));
-
-                        if (isSelected) {
-                            sb.append(TUIBox.line(ConsoleTheme.inlineHighlight(row), width)).append("\n");
-                        } else {
-                            String coloredBar = (pct >= 100) ? Ansi.green(progressBar)
-                                    : (pct >= 50) ? Ansi.cyan(progressBar)
-                                    : Ansi.yellow(progressBar);
-                            String coloredRow = row.replace("[" + progressBar + "]", "[" + coloredBar + "]");
-                            sb.append(TUIBox.line(coloredRow, width)).append("\n");
+                        for (int i = endIdx - startIdx; i < PAGE_SIZE; i++) {
+                            sb.append(TUIBox.emptyLine(width)).append("\n");
                         }
-                    }
-
-                    for (int i = endIdx - startIdx; i < PAGE_SIZE; i++) {
-                        sb.append(TUIBox.emptyLine(width)).append("\n");
                     }
 
                     sb.append(TUIBox.divider(width)).append("\n");
@@ -396,15 +404,19 @@ public class BudgetScreen implements Screen {
                             }
                         } else if (next2 == 'B') { // \033[B: Down Arrow
                             if (currentTab == 1) {
-                                List<SavingGoal> currentList = (goals.isEmpty()) ? createDefaultGoals(userEntity) : goals;
+                                List<SavingGoal> currentList = goals;
                                 int currentStart = (goalPage - 1) * PAGE_SIZE;
-                                int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, currentList.size() - currentStart));
-                                selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                                int currentPageCount = Math.max(0, Math.min(PAGE_SIZE, currentList.size() - currentStart));
+                                if (currentPageCount > 0) {
+                                    selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                                }
                                 transientStatus = null;
                             } else {
-                                int count = budgets.isEmpty() ? 5 : Math.max(1, budgets.size() - (budgetPage - 1) * PAGE_SIZE);
-                                int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, count));
-                                selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                                int count = Math.max(0, budgets.size() - (budgetPage - 1) * PAGE_SIZE);
+                                int currentPageCount = Math.min(PAGE_SIZE, count);
+                                if (currentPageCount > 0) {
+                                    selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                                }
                                 transientStatus = null;
                             }
                         } else if (next2 == 'D') { // \033[D: Left Arrow
@@ -492,15 +504,19 @@ public class BudgetScreen implements Screen {
                         }
                     } else if (upper == 'J') {
                         if (currentTab == 1) {
-                            List<SavingGoal> currentList = (goals.isEmpty()) ? createDefaultGoals(userEntity) : goals;
+                            List<SavingGoal> currentList = goals;
                             int currentStart = (goalPage - 1) * PAGE_SIZE;
-                            int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, currentList.size() - currentStart));
-                            selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                            int currentPageCount = Math.max(0, Math.min(PAGE_SIZE, currentList.size() - currentStart));
+                            if (currentPageCount > 0) {
+                                selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                            }
                             transientStatus = null;
                         } else {
-                            int count = budgets.isEmpty() ? 5 : Math.max(1, budgets.size() - (budgetPage - 1) * PAGE_SIZE);
-                            int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, count));
-                            selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                            int count = Math.max(0, budgets.size() - (budgetPage - 1) * PAGE_SIZE);
+                            int currentPageCount = Math.min(PAGE_SIZE, count);
+                            if (currentPageCount > 0) {
+                                selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                            }
                             transientStatus = null;
                         }
                     } else if (upper == 'H') {

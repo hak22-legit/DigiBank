@@ -279,7 +279,7 @@ public class LoanScreen implements Screen {
                         showContractModal(terminal, origAttributes, reader, selectedFacility, userEntity, width);
                         firstRender = true;
                     }
-                } else if (event.is('3')) {
+                } else if (event.is('3') || (event.is('N') && facilities.isEmpty()) || (event.is('n') && facilities.isEmpty())) {
                     terminal.setAttributes(origAttributes);
                     navigator.push(new ApplyLoanScreen(loanController, accountController));
                     return;
@@ -404,7 +404,11 @@ public class LoanScreen implements Screen {
                     sb.append(TUIBox.fullWidthLine(row, width)).append("\n");
                 }
             } else {
-                sb.append(TUIBox.emptyLine(width)).append("\n");
+                if (filtered.isEmpty() && i == 2) {
+                    sb.append(TUIBox.fullWidthLine("   No active records found. Press [3] to apply.", width)).append("\n");
+                } else {
+                    sb.append(TUIBox.emptyLine(width)).append("\n");
+                }
             }
         }
         sb.append(TUIBox.divider(width)).append("\n");
@@ -414,13 +418,13 @@ public class LoanScreen implements Screen {
         String defaultStatus;
 
         if (selectedFacility == null) {
-            defaultStatus = "No loan facilities found. Press [3] to submit a new loan request.";
+            defaultStatus = "No active records found. Press [3] to apply.";
             bottomGuide = "[3] Apply New Loan  •  [Esc] Back";
 
             // Row 1: Dossier Title
             sb.append(TUIBox.fullWidthLine(" FACILITY DOSSIER • NONE", width)).append("\n");
             // Row 2: Note 1
-            sb.append(TUIBox.fullWidthLine("   No active facility selected or no records matching active filter.", width)).append("\n");
+            sb.append(TUIBox.fullWidthLine("   No active records found. Press [3] to apply.", width)).append("\n");
             // Row 3: Note 2
             sb.append(TUIBox.fullWidthLine("   Use [Tab] to toggle filters or press [3] to submit a new loan request.", width)).append("\n");
             // Row 4: Inner Divider
@@ -437,7 +441,6 @@ public class LoanScreen implements Screen {
             sb.append(TUIBox.emptyLine(width)).append("\n");
             // Row 10: Spacer
             sb.append(TUIBox.emptyLine(width)).append("\n");
-
         } else {
             String status = selectedFacility.getStatus();
 
@@ -690,9 +693,9 @@ public class LoanScreen implements Screen {
                                 : BigDecimal.ZERO;
                         LocalDate nextDue = LocalDate.now().plusMonths(1);
 
-                        String accNum = "DGB-429309564";
-                        String note = "Exceeded maximum Debt-To-Income threshold (DTI > 55%).";
-                        String appDate = "2026-09-18 14:20 UTC";
+                        String accNum = "N/A";
+                        String note = "N/A";
+                        String appDate = "N/A";
 
                         try {
                             var optLoan = ControllerFactory.getLoanRepository().findById(dto.getLoanId());
@@ -724,98 +727,6 @@ public class LoanScreen implements Screen {
             }
         } catch (Exception e) {
             logger.error("Error querying loans", e);
-        }
-
-        // If no records in database, supply the 20 canonical default facilities matching mockups
-        if (list.isEmpty()) {
-            // Page 1 (ACTIVE facilities matching Mockup 1)
-            list.add(new LoanFacility("#LN-13", 13L, "Personal Credit", new BigDecimal("1000.00"),
-                    new BigDecimal("8.50"), "ACTIVE", new BigDecimal("46.68"),
-                    "DGB-429309564", 12, LocalDate.of(2026, 10, 20), new BigDecimal("83.33")));
-
-            list.add(new LoanFacility("#LN-12", 12L, "Personal Credit", new BigDecimal("1000.00"),
-                    new BigDecimal("10.50"), "ACTIVE", new BigDecimal("1105.00"),
-                    "DGB-429309564", 12, LocalDate.of(2026, 10, 20), new BigDecimal("92.08")));
-
-            list.add(new LoanFacility("#LN-11", 11L, "Personal Credit", new BigDecimal("1500.00"),
-                    new BigDecimal("8.75"), "ACTIVE", new BigDecimal("1631.25"),
-                    "DGB-429309564", 12, LocalDate.of(2026, 10, 20), new BigDecimal("135.94")));
-
-            list.add(new LoanFacility("#LN-09", 9L, "Emergency Auto", new BigDecimal("5000.00"),
-                    new BigDecimal("9.50"), "ACTIVE", new BigDecimal("5475.00"),
-                    "DGB-429309564", 24, LocalDate.of(2026, 10, 20), new BigDecimal("228.13")));
-
-            list.add(new LoanFacility("#LN-08", 8L, "Emergency Auto", new BigDecimal("3000.00"),
-                    new BigDecimal("7.50"), "ACTIVE", new BigDecimal("3225.00"),
-                    "DGB-429309564", 24, LocalDate.of(2026, 10, 20), new BigDecimal("134.38")));
-
-            // Page 2 (REJECTED facilities matching Mockup 2)
-            list.add(new LoanFacility("#LN-20", 20L, "Personal Credit", new BigDecimal("1000.00"),
-                    BigDecimal.ZERO, "REJECTED", BigDecimal.ZERO,
-                    "N/A", 12, null, BigDecimal.ZERO,
-                    "2026-09-18 14:20 UTC", "Exceeded maximum Debt-To-Income threshold (DTI > 55%)."));
-
-            list.add(new LoanFacility("#LN-19", 19L, "Personal Credit", new BigDecimal("1000.00"),
-                    BigDecimal.ZERO, "REJECTED", BigDecimal.ZERO,
-                    "N/A", 12, null, BigDecimal.ZERO,
-                    "2026-09-17 11:15 UTC", "Credit score below minimum approval threshold."));
-
-            list.add(new LoanFacility("#LN-18", 18L, "Emergency Auto", new BigDecimal("3000.00"),
-                    BigDecimal.ZERO, "REJECTED", BigDecimal.ZERO,
-                    "N/A", 24, null, BigDecimal.ZERO,
-                    "2026-09-16 09:30 UTC", "High risk rating on collateral evaluation."));
-
-            list.add(new LoanFacility("#LN-17", 17L, "Personal Credit", new BigDecimal("2000.00"),
-                    BigDecimal.ZERO, "REJECTED", BigDecimal.ZERO,
-                    "N/A", 12, null, BigDecimal.ZERO,
-                    "2026-09-15 16:45 UTC", "Incomplete proof of income documentation."));
-
-            list.add(new LoanFacility("#LN-16", 16L, "Emergency Auto", new BigDecimal("4000.00"),
-                    BigDecimal.ZERO, "REJECTED", BigDecimal.ZERO,
-                    "N/A", 24, null, BigDecimal.ZERO,
-                    "2026-09-14 10:20 UTC", "Debt service ratio exceeds acceptable banking limits."));
-
-            // Page 3 (SETTLED facilities)
-            list.add(new LoanFacility("#LN-07", 7L, "Personal Credit", new BigDecimal("2000.00"),
-                    new BigDecimal("8.00"), "SETTLED", BigDecimal.ZERO,
-                    "DGB-429309564", 12, null, BigDecimal.ZERO));
-
-            list.add(new LoanFacility("#LN-06", 6L, "Emergency Auto", new BigDecimal("2500.00"),
-                    new BigDecimal("9.00"), "SETTLED", BigDecimal.ZERO,
-                    "DGB-429309564", 24, null, BigDecimal.ZERO));
-
-            list.add(new LoanFacility("#LN-05", 5L, "Personal Credit", new BigDecimal("1500.00"),
-                    new BigDecimal("7.50"), "SETTLED", BigDecimal.ZERO,
-                    "DGB-429309564", 12, null, BigDecimal.ZERO));
-
-            list.add(new LoanFacility("#LN-04", 4L, "Personal Credit", new BigDecimal("1000.00"),
-                    new BigDecimal("8.00"), "SETTLED", BigDecimal.ZERO,
-                    "DGB-429309564", 12, null, BigDecimal.ZERO));
-
-            list.add(new LoanFacility("#LN-03", 3L, "Emergency Auto", new BigDecimal("3500.00"),
-                    new BigDecimal("8.50"), "SETTLED", BigDecimal.ZERO,
-                    "DGB-429309564", 24, null, BigDecimal.ZERO));
-
-            // Page 4 (Additional facilities)
-            list.add(new LoanFacility("#LN-02", 2L, "Personal Credit", new BigDecimal("1200.00"),
-                    new BigDecimal("8.00"), "SETTLED", BigDecimal.ZERO,
-                    "DGB-429309564", 12, null, BigDecimal.ZERO));
-
-            list.add(new LoanFacility("#LN-01", 1L, "Personal Credit", new BigDecimal("800.00"),
-                    new BigDecimal("8.50"), "SETTLED", BigDecimal.ZERO,
-                    "DGB-429309564", 12, null, BigDecimal.ZERO));
-
-            list.add(new LoanFacility("#LN-15", 15L, "Personal Credit", new BigDecimal("2500.00"),
-                    new BigDecimal("9.00"), "ACTIVE", new BigDecimal("1850.00"),
-                    "DGB-429309564", 12, LocalDate.of(2026, 10, 20), new BigDecimal("218.75")));
-
-            list.add(new LoanFacility("#LN-14", 14L, "Emergency Auto", new BigDecimal("4500.00"),
-                    new BigDecimal("8.50"), "ACTIVE", new BigDecimal("3100.00"),
-                    "DGB-429309564", 24, LocalDate.of(2026, 10, 20), new BigDecimal("204.69")));
-
-            list.add(new LoanFacility("#LN-10", 10L, "Personal Credit", new BigDecimal("2000.00"),
-                    new BigDecimal("8.00"), "ACTIVE", new BigDecimal("1450.00"),
-                    "DGB-429309564", 12, LocalDate.of(2026, 10, 20), new BigDecimal("173.33")));
         }
 
         return list;

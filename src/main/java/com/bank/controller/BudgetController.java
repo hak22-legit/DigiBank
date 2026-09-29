@@ -20,6 +20,18 @@ public class BudgetController {
         return budgetService.getBudgetsWithUsage(user);
     }
 
+    public List<BudgetView> getBudgetsWithUsage(Long userId) {
+        return budgetService.getBudgetsWithUsage(userId);
+    }
+
+    public List<Budget> getBudgetsForUser(User user) {
+        return budgetService.getBudgetsForUser(user);
+    }
+
+    public List<Budget> getBudgetsForUser(Long userId) {
+        return budgetService.getBudgetsForUser(userId);
+    }
+
     public Budget createBudget(User user, Long categoryId, BigDecimal limit, BudgetPeriod period, LocalDate start, LocalDate end) {
         return budgetService.createBudget(user, categoryId, limit, period, start, end);
     }
@@ -38,5 +50,13 @@ public class BudgetController {
 
     public List<com.bank.model.dto.UnbudgetedCategory> getUnbudgetedCategories(User user, int month, int year) {
         return budgetService.getUnbudgetedCategories(user, month, year);
+    }
+
+    public BigDecimal calculateSpentForCategory(Long categoryId, User user, java.time.LocalDateTime startDate, java.time.LocalDateTime endDate) {
+        return budgetService.calculateSpentForCategory(categoryId, user, startDate, endDate);
+    }
+
+    public BigDecimal calculateSpentForCategory(Long categoryId, User user) {
+        return budgetService.calculateSpentForCategory(categoryId, user);
     }
 }

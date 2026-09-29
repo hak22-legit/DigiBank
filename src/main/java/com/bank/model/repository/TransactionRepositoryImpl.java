@@ -6,6 +6,7 @@ import com.bank.model.enums.TransactionStatus;
 import com.bank.model.enums.TransactionType;
 import com.bank.model.entity.Transaction;
 
+import java.math.BigDecimal;
 import java.sql.*;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -72,13 +73,18 @@ public class TransactionRepositoryImpl implements TransactionRepository {
 
     @Override
     public List<Transaction> findByAccountId(Long accountId) {
-        String sql = "SELECT * FROM transactions WHERE account_id = ? ORDER BY transaction_date DESC";
+        String sql = """
+            SELECT * FROM transactions
+            WHERE account_id = ? OR related_account_id = ?
+            ORDER BY transaction_date DESC
+            """;
         List<Transaction> transactions = new ArrayList<>();
 
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setLong(1, accountId);
+            stmt.setLong(2, accountId);
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) transactions.add(mapRow(rs));
             }
@@ -192,6 +198,19 @@ public class TransactionRepositoryImpl implements TransactionRepository {
         Long categoryId = rs.getObject("category_id") != null
                 ? rs.getLong("category_id") : null;
 
+        BigDecimal destinationAmount = null;
+        try {
+            destinationAmount = rs.getBigDecimal("destination_amount");
+        } catch (SQLException ignored) {}
+
+        Currency destinationCurrency = null;
+        try {
+            String destCcyStr = rs.getString("destination_currency");
+            if (destCcyStr != null && !destCcyStr.isBlank()) {
+                destinationCurrency = Currency.valueOf(destCcyStr.trim().toUpperCase());
+            }
+        } catch (SQLException ignored) {}
+
         return Transaction.builder()
                 .transactionId(rs.getLong("transaction_id"))
                 .accountId(rs.getLong("account_id"))
@@ -200,6 +219,8 @@ public class TransactionRepositoryImpl implements TransactionRepository {
                 .transactionType(TransactionType.valueOf(rs.getString("transaction_type")))
                 .amount(rs.getBigDecimal("amount"))
                 .currency(Currency.valueOf(rs.getString("currency")))
+                .destinationAmount(destinationAmount)
+                .destinationCurrency(destinationCurrency)
                 .description(rs.getString("description"))
                 .status(TransactionStatus.valueOf(rs.getString("status")))
                 .idempotencyKey((UUID) rs.getObject("idempotency_key"))

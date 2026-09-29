@@ -185,10 +185,12 @@ public class TransactionDetailsScreen implements Screen {
 
         boolean isIncome = (tv != null && tv.getDirection() == TransactionDirection.INCOME);
         String sign = isIncome ? "+" : "-";
-        String sym = (ccy == Currency.KHR) ? "៛" : "$";
-        BigDecimal amt = (tx != null && tx.getAmount() != null) ? tx.getAmount() : BigDecimal.ZERO;
-        String grossAmt = String.format("%s%s %s %s", sign, sym, DF.format(amt), ccy);
-        String feeStr = String.format("%s 0.00 %s", sym, ccy);
+        BigDecimal amt = (tv != null) ? tv.getSettledAmount() : (tx != null && tx.getAmount() != null ? tx.getAmount() : BigDecimal.ZERO);
+        if (amt == null) amt = BigDecimal.ZERO;
+        Currency effCcy = (tv != null && tv.getSettledCurrency() != null) ? tv.getSettledCurrency() : ccy;
+        String sym = (effCcy == Currency.KHR) ? "៛" : "$";
+        String grossAmt = String.format("%s%s %s %s", sign, sym, DF.format(amt), effCcy);
+        String feeStr = String.format("%s 0.00 %s", sym, effCcy);
         String settlementState = (tx != null && tx.getStatus() != null ? tx.getStatus().name() : "COMPLETED") + " (Direct Clearing)";
 
         String rawMemo = (tx != null && tx.getDescription() != null && !tx.getDescription().trim().isEmpty())

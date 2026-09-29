@@ -309,6 +309,8 @@ public class AccountService {
                     .transactionType(TransactionType.TRANSFER)
                     .amount(debitAmount)
                     .currency(effectiveCurrency)
+                    .destinationAmount(creditAmount)
+                    .destinationCurrency(receiverCurrency)
                     .description(effectiveDescription)
                     .status(TransactionStatus.COMPLETED)
                     .idempotencyKey(idempotencyKey)

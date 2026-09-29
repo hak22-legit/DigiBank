@@ -93,7 +93,7 @@ public class SavingsGoalsScreen implements Screen {
                     reloadNeeded = false;
                 }
 
-                List<SavingGoal> displayGoals = goals.isEmpty() ? createDefaultGoals(userEntity) : goals;
+                List<SavingGoal> displayGoals = goals;
 
                 // Portfolio Metrics
                 BigDecimal totalFundsSaved = BigDecimal.ZERO;
@@ -134,57 +134,67 @@ public class SavingsGoalsScreen implements Screen {
                 sb.append(TUIBox.line(header, width)).append("\n");
                 sb.append(TUIBox.line("  " + "─".repeat(76), width)).append("\n");
 
-                for (int i = 0; i < displayGoals.size(); i++) {
-                    SavingGoal g = displayGoals.get(i);
-                    boolean isSelected = (i == selectedIndex);
-                    String prefix = isSelected ? "▸" : " ";
+                if (displayGoals.isEmpty()) {
+                    for (int i = 0; i < PAGE_SIZE; i++) {
+                        if (i == 2) {
+                            sb.append(TUIBox.line(ConsoleTheme.muted("  No active records found. Press [N] to create."), width)).append("\n");
+                        } else {
+                            sb.append(TUIBox.emptyLine(width)).append("\n");
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < displayGoals.size(); i++) {
+                        SavingGoal g = displayGoals.get(i);
+                        boolean isSelected = (i == selectedIndex);
+                        String prefix = isSelected ? "▸" : " ";
 
-                    String name = g.getName() != null ? g.getName() : "Unnamed";
-                    if (name.length() > 15) name = name.substring(0, 15);
+                        String name = g.getName() != null ? g.getName() : "Unnamed";
+                        if (name.length() > 15) name = name.substring(0, 15);
 
-                    BigDecimal target = g.getTargetAmount() != null ? g.getTargetAmount() : BigDecimal.ONE;
-                    BigDecimal saved = g.getCurrentAmount() != null ? g.getCurrentAmount() : BigDecimal.ZERO;
+                        BigDecimal target = g.getTargetAmount() != null ? g.getTargetAmount() : BigDecimal.ONE;
+                        BigDecimal saved = g.getCurrentAmount() != null ? g.getCurrentAmount() : BigDecimal.ZERO;
 
-                    String targetStr = "$ " + String.format("%10s", df.format(target));
-                    String savedStr = "$ " + String.format("%10s", df.format(saved));
+                        String targetStr = "$ " + String.format("%10s", df.format(target));
+                        String savedStr = "$ " + String.format("%10s", df.format(saved));
 
-                    String deadlineStr = g.getDeadline() != null ? g.getDeadline().format(dfDate) : "2026-12-31";
+                        String deadlineStr = g.getDeadline() != null ? g.getDeadline().format(dfDate) : "2026-12-31";
 
-                    int percentage = (target.compareTo(BigDecimal.ZERO) > 0)
-                            ? (int) Math.round((saved.doubleValue() / target.doubleValue()) * 100)
-                            : 0;
-                    percentage = Math.max(0, percentage);
+                        int percentage = (target.compareTo(BigDecimal.ZERO) > 0)
+                                ? (int) Math.round((saved.doubleValue() / target.doubleValue()) * 100)
+                                : 0;
+                        percentage = Math.max(0, percentage);
 
-                    // 14-slot progress bar
-                    int filledSlots = Math.min(14, (percentage * 14) / 100);
-                    filledSlots = Math.max(0, filledSlots);
-                    int emptySlots = Math.max(0, 14 - filledSlots);
-                    String progressBar = "█".repeat(filledSlots) + "░".repeat(emptySlots);
+                        // 14-slot progress bar
+                        int filledSlots = Math.min(14, (percentage * 14) / 100);
+                        filledSlots = Math.max(0, filledSlots);
+                        int emptySlots = Math.max(0, 14 - filledSlots);
+                        String progressBar = "█".repeat(filledSlots) + "░".repeat(emptySlots);
 
-                    String progStr = String.format("[%s] %3d%%", progressBar, percentage);
+                        String progStr = String.format("[%s] %3d%%", progressBar, percentage);
 
-                    String row = String.format("%s %-15s %12s  %12s  %-10s  %s",
-                            prefix, name, targetStr, savedStr, deadlineStr, progStr);
+                        String row = String.format("%s %-15s %12s  %12s  %-10s  %s",
+                                prefix, name, targetStr, savedStr, deadlineStr, progStr);
 
-                    if (row.length() > 78) {
-                        row = row.substring(0, 78);
-                    } else {
-                        row = String.format("%-78s", row);
+                        if (row.length() > 78) {
+                            row = row.substring(0, 78);
+                        } else {
+                            row = String.format("%-78s", row);
+                        }
+
+                        if (isSelected) {
+                            sb.append(TUIBox.line(ConsoleTheme.inlineHighlight(row), width)).append("\n");
+                        } else {
+                            String coloredBar = (percentage >= 100) ? Ansi.green(progressBar)
+                                    : (percentage >= 75) ? Ansi.yellow(progressBar)
+                                    : progressBar;
+                            String coloredRow = row.replace("[" + progressBar + "]", "[" + coloredBar + "]");
+                            sb.append(TUIBox.line(coloredRow, width)).append("\n");
+                        }
                     }
 
-                    if (isSelected) {
-                        sb.append(TUIBox.line(ConsoleTheme.inlineHighlight(row), width)).append("\n");
-                    } else {
-                        String coloredBar = (percentage >= 100) ? Ansi.green(progressBar)
-                                : (percentage >= 75) ? Ansi.yellow(progressBar)
-                                : progressBar;
-                        String coloredRow = row.replace("[" + progressBar + "]", "[" + coloredBar + "]");
-                        sb.append(TUIBox.line(coloredRow, width)).append("\n");
+                    for (int i = displayGoals.size(); i < PAGE_SIZE; i++) {
+                        sb.append(TUIBox.emptyLine(width)).append("\n");
                     }
-                }
-
-                for (int i = displayGoals.size(); i < PAGE_SIZE; i++) {
-                    sb.append(TUIBox.emptyLine(width)).append("\n");
                 }
 
                 sb.append(TUIBox.divider(width)).append("\n");
@@ -246,8 +256,10 @@ public class SavingsGoalsScreen implements Screen {
                     selectedIndex = Math.max(0, selectedIndex - 1);
                     transientStatus = null;
                 } else if (ch == 's' || ch == 'S' || ch == 'j' || ch == 'J') {
-                    int count = Math.max(1, displayGoals.size());
-                    selectedIndex = Math.min(count - 1, selectedIndex + 1);
+                    int count = displayGoals.size();
+                    if (count > 0) {
+                        selectedIndex = Math.min(count - 1, selectedIndex + 1);
+                    }
                     transientStatus = null;
                 } else if (ch == '\r' || ch == '\n' || ch == 'd' || ch == 'D') { // Enter or D: Deposit
                     if (currentSelectedGoal != null) {

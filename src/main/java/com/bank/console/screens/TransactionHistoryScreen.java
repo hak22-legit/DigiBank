@@ -26,6 +26,7 @@ import com.bank.model.enums.TransactionDirection;
 import com.bank.model.enums.TransactionType;
 import com.bank.security.SessionManager;
 import com.bank.ui.Ansi;
+import com.bank.util.CurrencyFormatter;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
@@ -156,7 +157,7 @@ public class TransactionHistoryScreen implements Screen {
                         Transaction t = tv.getTransaction();
                         if (t != null && t.getTransactionId() != null) {
                             runningBalanceMap.put(t.getTransactionId(), running);
-                            BigDecimal amt = t.getAmount() != null ? t.getAmount() : BigDecimal.ZERO;
+                            BigDecimal amt = tv.getSettledAmount();
                             if (tv.getDirection() == TransactionDirection.INCOME) {
                                 running = running.subtract(amt);
                             } else {
@@ -241,11 +242,14 @@ public class TransactionHistoryScreen implements Screen {
                         String catStr = getCategoryDisplayName(tx, categoryNames);
                         if (catStr.length() > 25) catStr = catStr.substring(0, 22) + "...";
 
-                        BigDecimal amt = tx.getAmount() != null ? tx.getAmount() : BigDecimal.ZERO;
+                        BigDecimal amt = tv.getSettledAmount();
+                        Currency settledCcy = tv.getSettledCurrency();
                         boolean isIncome = tv.getDirection() == TransactionDirection.INCOME;
                         String sign = isIncome ? "+" : "-";
-                        String sym = (selectedAcc.getCurrency() == Currency.KHR) ? "៛" : "$";
-                        String amountFormatted = String.format("%s%s%8s", sign, sym, df.format(amt));
+                        String amountFormatted = sign + CurrencyFormatter.format(amt.abs(), settledCcy);
+                        if (amountFormatted.length() > 10) {
+                            amountFormatted = sign + CurrencyFormatter.formatCompact(amt.abs(), settledCcy);
+                        }
 
                         boolean isSelected = (i == selectedRowIdx);
 

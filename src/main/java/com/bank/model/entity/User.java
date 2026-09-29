@@ -22,4 +22,8 @@ public class User {
     private UserStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    public Long getId() {
+        return userId;
+    }
 }

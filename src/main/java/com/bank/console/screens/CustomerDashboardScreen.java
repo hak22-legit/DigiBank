@@ -156,7 +156,7 @@ public class CustomerDashboardScreen implements Screen {
         } catch (Exception ignored) {}
 
         // Budget Overview
-        String budgetOverview = "$0.00 spent of $200.00 limit";
+        String budgetOverview = "$0.00 spent of $0.00 limit";
         try {
             List<BudgetView> budgets = budgetController.getBudgetsWithUsage(userEntity);
             if (budgets != null && !budgets.isEmpty()) {

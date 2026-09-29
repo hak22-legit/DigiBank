@@ -151,7 +151,9 @@ public class StatementExportService {
 
         for (Transaction t : dbTransactions) {
             boolean isCredit = isCreditTransaction(t, account.getAccountId());
-            BigDecimal amt = t.getAmount() != null ? t.getAmount().abs() : BigDecimal.ZERO;
+            BigDecimal amt = (account != null && account.getAccountId() != null)
+                    ? t.getAmountForAccount(account.getAccountId()).abs()
+                    : (t.getAmount() != null ? t.getAmount().abs() : BigDecimal.ZERO);
 
             BigDecimal debAmt = null;
             BigDecimal credAmt = null;

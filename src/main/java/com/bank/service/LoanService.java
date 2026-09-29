@@ -97,7 +97,17 @@ public class LoanService {
 
 
     public List<LoanDTO> getUserLoans(User requestingUser) {
-        List<Loan> loans = loanRepository.findByUserId(requestingUser.getUserId());
+        if (requestingUser == null || requestingUser.getUserId() == null) {
+            return List.of();
+        }
+        return getUserLoans(requestingUser.getUserId());
+    }
+
+    public List<LoanDTO> getUserLoans(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        List<Loan> loans = loanRepository.findByUserId(userId);
         return LoanMapper.toDTOList(loans);
     }
 

@@ -79,12 +79,36 @@ public class BudgetService {
         return budgetRepository.save(budget);
     }
 
+    public List<Budget> getBudgetsForUser(User user) {
+        if (user == null || user.getUserId() == null) {
+            return List.of();
+        }
+        return budgetRepository.findByUserId(user.getUserId());
+    }
+
+    public List<Budget> getBudgetsForUser(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return budgetRepository.findByUserId(userId);
+    }
+
+    public List<BudgetView> getBudgetsWithUsage(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return getBudgetsWithUsage(User.builder().userId(userId).build());
+    }
+
     /**
      * Returns all of a user's budgets, each enriched with actual spending
      * for that category within the budget's date range, and a usage status.
      * Batch-fetches transactions across all accounts once to eliminate N*M database roundtrips.
      */
     public List<BudgetView> getBudgetsWithUsage(User user) {
+        if (user == null || user.getUserId() == null) {
+            return List.of();
+        }
         List<Budget> budgets = budgetRepository.findByUserId(user.getUserId());
         if (budgets == null || budgets.isEmpty()) {
             return List.of();
@@ -109,6 +133,7 @@ public class BudgetService {
 
         // Batch fetch all OUTCOME transactions across user's accounts within overall date window once
         List<TransactionView> allTransactions = accounts.stream()
+                .filter(acc -> user.getUserId() != null && user.getUserId().equals(acc.getUserId()))
                 .flatMap(acc -> transactionService.getTransactionHistory(
                         acc.getAccountId(), HistoryFilter.OUTCOME, overallStart, overallEnd, user).stream())
                 .collect(Collectors.toList());
@@ -129,21 +154,52 @@ public class BudgetService {
         return buildBudgetView(budget, user);
     }
 
+    /**
+     * Calculates total spent for a specific category within a date window,
+     * ensuring transactions are filtered strictly where account.user_id = :userId.
+     */
+    public BigDecimal calculateSpentForCategory(Long categoryId, User user, LocalDateTime startDate, LocalDateTime endDate) {
+        if (categoryId == null || user == null || user.getUserId() == null) {
+            return BigDecimal.ZERO;
+        }
+        return calculateSpentForCategory(categoryId, user.getUserId(), startDate, endDate);
+    }
+
+    public BigDecimal calculateSpentForCategory(Long categoryId, Long userId, LocalDateTime startDate, LocalDateTime endDate) {
+        if (categoryId == null || userId == null) {
+            return BigDecimal.ZERO;
+        }
+        List<Account> accounts = accountRepository.findByUserId(userId);
+        if (accounts == null || accounts.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        User user = User.builder().userId(userId).build();
+        return accounts.stream()
+                .filter(acc -> userId.equals(acc.getUserId()))
+                .flatMap(acc -> transactionService.getTransactionHistory(
+                        acc.getAccountId(), HistoryFilter.OUTCOME, startDate, endDate, user).stream())
+                .filter(v -> v.getTransaction() != null && categoryId.equals(v.getTransaction().getCategoryId()))
+                .map(v -> v.getTransaction().getAmount())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal calculateSpentForCategory(Long categoryId, User user) {
+        LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
+        return calculateSpentForCategory(categoryId, user, startOfMonth.atStartOfDay(), LocalDateTime.now());
+    }
+
+    public BigDecimal calculateSpentForCategory(Long categoryId, Long userId) {
+        LocalDate startOfMonth = LocalDate.now().withDayOfMonth(1);
+        return calculateSpentForCategory(categoryId, userId, startOfMonth.atStartOfDay(), LocalDateTime.now());
+    }
+
     private BudgetView buildBudgetView(Budget budget, User user) {
         LocalDateTime rangeStart = budget.getStartDate().atStartOfDay();
         LocalDateTime rangeEnd = budget.getEndDate() != null
                 ? budget.getEndDate().atTime(23, 59, 59)
                 : LocalDateTime.now();
 
-        List<Account> accounts = accountRepository.findByUserId(user.getUserId());
-
-        BigDecimal actualSpending = accounts.stream()
-                .flatMap(acc -> transactionService.getTransactionHistory(
-                        acc.getAccountId(), HistoryFilter.OUTCOME, rangeStart, rangeEnd, user).stream())
-                .filter(v -> v.getTransaction() != null && budget.getCategoryId().equals(v.getTransaction().getCategoryId()))
-                .map(v -> v.getTransaction().getAmount())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
+        BigDecimal actualSpending = calculateSpentForCategory(budget.getCategoryId(), user, rangeStart, rangeEnd);
         return calculateBudgetView(budget, actualSpending);
     }
 

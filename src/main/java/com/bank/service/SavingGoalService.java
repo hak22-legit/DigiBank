@@ -40,7 +40,17 @@ public class SavingGoalService {
     }
 
     public List<SavingGoal> getGoalsForUser(User user) {
+        if (user == null || user.getUserId() == null) {
+            return List.of();
+        }
         return savingGoalRepository.findByUserId(user.getUserId());
+    }
+
+    public List<SavingGoal> getGoalsForUser(Long userId) {
+        if (userId == null) {
+            return List.of();
+        }
+        return savingGoalRepository.findByUserId(userId);
     }
 
     public SavingGoal getGoalById(Long goalId, User requestingUser) {

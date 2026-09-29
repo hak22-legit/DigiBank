@@ -145,20 +145,16 @@ public class FinancialPlanningScreen extends BudgetScreen {
                     }
 
                     totalMonthlyCap = BigDecimal.ZERO;
-                    if (budgets.isEmpty()) {
-                        totalMonthlyCap = new BigDecimal("470.00");
-                    } else {
-                        for (BudgetView bv : budgets) {
-                            if (bv.getBudget() != null && bv.getBudget().getAmountLimit() != null) {
-                                totalMonthlyCap = totalMonthlyCap.add(bv.getBudget().getAmountLimit());
-                            }
+                    for (BudgetView bv : budgets) {
+                        if (bv.getBudget() != null && bv.getBudget().getAmountLimit() != null) {
+                            totalMonthlyCap = totalMonthlyCap.add(bv.getBudget().getAmountLimit());
                         }
                     }
 
                     totalBudgetPages = Math.max(1, (int) Math.ceil((double) budgets.size() / PAGE_SIZE));
                     budgetPage = Math.min(budgetPage, totalBudgetPages);
 
-                    int goalCount = goals.isEmpty() ? 5 : goals.size();
+                    int goalCount = goals.size();
                     totalGoalPages = Math.max(1, (int) Math.ceil((double) goalCount / PAGE_SIZE));
                     goalPage = Math.min(goalPage, totalGoalPages);
 
@@ -189,8 +185,14 @@ public class FinancialPlanningScreen extends BudgetScreen {
                     sb.append(TUIBox.line(" " + "─".repeat(76) + " ", width)).append("\n");
 
                     if (budgets.isEmpty()) {
-                        selectedBudgetIndex = Math.max(0, Math.min(selectedBudgetIndex, 4));
-                        renderDefaultBudgetRows(sb, width, selectedBudgetIndex);
+                        selectedBudgetIndex = 0;
+                        for (int i = 0; i < PAGE_SIZE; i++) {
+                            if (i == 2) {
+                                sb.append(TUIBox.line(ConsoleTheme.muted("  No active records found. Press [N] to create."), width)).append("\n");
+                            } else {
+                                sb.append(TUIBox.emptyLine(width)).append("\n");
+                            }
+                        }
                     } else {
                         int startIdx = (budgetPage - 1) * PAGE_SIZE;
                         int endIdx = Math.min(startIdx + PAGE_SIZE, budgets.size());
@@ -253,21 +255,26 @@ public class FinancialPlanningScreen extends BudgetScreen {
                     sb.append(TUIBox.line(header, width)).append("\n");
                     sb.append(TUIBox.line(" " + "─".repeat(76) + " ", width)).append("\n");
 
-                    List<SavingGoal> displayGoals;
-                    if (goals.isEmpty()) {
-                        displayGoals = createDefaultGoals(userEntity);
+                    List<SavingGoal> displayGoals = goals;
+
+                    if (displayGoals.isEmpty()) {
+                        currentSelectedGoal = null;
+                        for (int i = 0; i < PAGE_SIZE; i++) {
+                            if (i == 2) {
+                                sb.append(TUIBox.line(ConsoleTheme.muted("  No active records found. Press [C] to create."), width)).append("\n");
+                            } else {
+                                sb.append(TUIBox.emptyLine(width)).append("\n");
+                            }
+                        }
                     } else {
-                        displayGoals = goals;
-                    }
+                        int startIdx = (goalPage - 1) * PAGE_SIZE;
+                        int endIdx = Math.min(startIdx + PAGE_SIZE, displayGoals.size());
+                        int pageCount = Math.max(1, endIdx - startIdx);
+                        selectedGoalIndex = Math.max(0, Math.min(selectedGoalIndex, pageCount - 1));
 
-                    int startIdx = (goalPage - 1) * PAGE_SIZE;
-                    int endIdx = Math.min(startIdx + PAGE_SIZE, displayGoals.size());
-                    int pageCount = Math.max(1, endIdx - startIdx);
-                    selectedGoalIndex = Math.max(0, Math.min(selectedGoalIndex, pageCount - 1));
-
-                    if (!displayGoals.isEmpty() && (startIdx + selectedGoalIndex) < displayGoals.size()) {
-                        currentSelectedGoal = displayGoals.get(startIdx + selectedGoalIndex);
-                    }
+                        if (!displayGoals.isEmpty() && (startIdx + selectedGoalIndex) < displayGoals.size()) {
+                            currentSelectedGoal = displayGoals.get(startIdx + selectedGoalIndex);
+                        }
 
                     for (int i = startIdx; i < endIdx; i++) {
                         SavingGoal g = displayGoals.get(i);
@@ -310,15 +317,16 @@ public class FinancialPlanningScreen extends BudgetScreen {
                     for (int i = endIdx - startIdx; i < PAGE_SIZE; i++) {
                         sb.append(TUIBox.emptyLine(width)).append("\n");
                     }
-
-                    sb.append(TUIBox.divider(width)).append("\n");
-                    int totalCount = displayGoals.size();
-                    String metaRow = String.format("Page: [ %d / %d ]   │ Filter: [IN PROGRESS]        │ Total Goals: %-4d",
-                            goalPage, totalGoalPages, totalCount);
-                    sb.append(TUIBox.line(metaRow, width)).append("\n");
                 }
 
-                sb.append(TUIBox.bottom(width)).append("\n");
+                sb.append(TUIBox.divider(width)).append("\n");
+                int totalCount = displayGoals.size();
+                String metaRow = String.format("Page: [ %d / %d ]   │ Filter: [IN PROGRESS]        │ Total Goals: %-4d",
+                        goalPage, totalGoalPages, totalCount);
+                sb.append(TUIBox.line(metaRow, width)).append("\n");
+            }
+
+            sb.append(TUIBox.bottom(width)).append("\n");
 
                 if (currentTab == 0) {
                     sb.append(ConsoleTheme.keyGuide("[↑/↓] Select  •  [Enter] Edit Limit  •  [N] New  •  [X] Delete  •  [1/2/Tab] Tab")).append("\n");
@@ -353,15 +361,22 @@ public class FinancialPlanningScreen extends BudgetScreen {
                             }
                         } else if (next2 == 'B') { // \033[B: Down Arrow
                             if (currentTab == 1) {
-                                List<SavingGoal> currentList = (goals.isEmpty()) ? createDefaultGoals(userEntity) : goals;
-                                int currentStart = (goalPage - 1) * PAGE_SIZE;
-                                int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, currentList.size() - currentStart));
-                                selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                                if (!goals.isEmpty()) {
+                                    int currentStart = (goalPage - 1) * PAGE_SIZE;
+                                    int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, goals.size() - currentStart));
+                                    selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                                } else {
+                                    selectedGoalIndex = 0;
+                                }
                                 transientStatus = null;
                             } else {
-                                int count = budgets.isEmpty() ? 5 : Math.max(1, budgets.size() - (budgetPage - 1) * PAGE_SIZE);
-                                int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, count));
-                                selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                                if (!budgets.isEmpty()) {
+                                    int currentStart = (budgetPage - 1) * PAGE_SIZE;
+                                    int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, budgets.size() - currentStart));
+                                    selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                                } else {
+                                    selectedBudgetIndex = 0;
+                                }
                                 transientStatus = null;
                             }
                         } else if (next2 == 'D') { // \033[D: Left Arrow
@@ -429,15 +444,22 @@ public class FinancialPlanningScreen extends BudgetScreen {
                         }
                     } else if (upper == 'J') {
                         if (currentTab == 1) {
-                            List<SavingGoal> currentList = (goals.isEmpty()) ? createDefaultGoals(userEntity) : goals;
-                            int currentStart = (goalPage - 1) * PAGE_SIZE;
-                            int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, currentList.size() - currentStart));
-                            selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                            if (!goals.isEmpty()) {
+                                int currentStart = (goalPage - 1) * PAGE_SIZE;
+                                int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, goals.size() - currentStart));
+                                selectedGoalIndex = Math.min(currentPageCount - 1, selectedGoalIndex + 1);
+                            } else {
+                                selectedGoalIndex = 0;
+                            }
                             transientStatus = null;
                         } else {
-                            int count = budgets.isEmpty() ? 5 : Math.max(1, budgets.size() - (budgetPage - 1) * PAGE_SIZE);
-                            int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, count));
-                            selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                            if (!budgets.isEmpty()) {
+                                int currentStart = (budgetPage - 1) * PAGE_SIZE;
+                                int currentPageCount = Math.max(1, Math.min(PAGE_SIZE, budgets.size() - currentStart));
+                                selectedBudgetIndex = Math.min(currentPageCount - 1, selectedBudgetIndex + 1);
+                            } else {
+                                selectedBudgetIndex = 0;
+                            }
                             transientStatus = null;
                         }
                     } else if (upper == 'H') {

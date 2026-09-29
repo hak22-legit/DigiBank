@@ -14,4 +14,8 @@ public class UserDTO {
     private String phone;
     private UserStatus status;
     // passwordHash intentionally omitted - never exposed outside the service layer
+
+    public Long getId() {
+        return userId;
+    }
 }

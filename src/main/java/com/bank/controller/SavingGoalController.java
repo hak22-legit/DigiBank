@@ -17,6 +17,10 @@ public class SavingGoalController {
         return savingGoalService.getGoalsForUser(user);
     }
 
+    public List<SavingGoal> getGoalsForUser(Long userId) {
+        return savingGoalService.getGoalsForUser(userId);
+    }
+
     public SavingGoal createGoal(User user, String name, BigDecimal target, LocalDate deadline) {
         return savingGoalService.createGoal(user, name, target, deadline);
     }

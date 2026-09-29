@@ -11,6 +11,7 @@ import com.bank.model.entity.User;
 import com.bank.model.repository.AccountRepository;
 import com.bank.model.repository.TransactionRepository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -37,7 +38,12 @@ public class TransactionService {
         List<Transaction> transactions = transactionRepository.findHistoryForAccount(accountId);
 
         return transactions.stream()
-                .map(txn -> new TransactionView(txn, resolveDirection(txn, accountId)))
+                .map(txn -> {
+                    TransactionDirection direction = resolveDirection(txn, accountId);
+                    BigDecimal settledAmount = txn.getAmountForAccount(accountId);
+                    com.bank.model.enums.Currency settledCurrency = txn.getCurrencyForAccount(accountId);
+                    return new TransactionView(txn, direction, settledAmount, settledCurrency);
+                })
                 .filter(view -> matchesFilter(view, filter))
                 .collect(Collectors.toList());
     }
