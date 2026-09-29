@@ -15,7 +15,10 @@ import com.bank.exception.AuthenticationException;
 import com.bank.exception.InactiveAccountException;
 import com.bank.exception.LockedAccountException;
 import com.bank.model.dto.AuthenticatedUser;
+import com.bank.model.entity.Admin;
 import com.bank.model.enums.AdminRole;
+import com.bank.model.enums.AdminStatus;
+import com.bank.security.SessionManager;
 import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.utils.NonBlockingReader;
@@ -238,7 +241,19 @@ public class LoginScreen implements Screen {
                 session.setCurrentUser(authUser.getUserDTO());
             } else {
                 session.setCurrentAdmin(authUser.getAdminDTO());
+                if (SessionManager.getCurrentAdmin() == null && authUser.getAdminDTO() != null) {
+                    Admin adminEntity = Admin.builder()
+                            .adminId(authUser.getAdminDTO().getAdminId())
+                            .username(authUser.getAdminDTO().getUsername())
+                            .email(authUser.getAdminDTO().getEmail())
+                            .fullName(authUser.getAdminDTO().getFullName())
+                            .role(authUser.getAdminDTO().getRole())
+                            .status(AdminStatus.ACTIVE)
+                            .build();
+                    SessionManager.loginAdmin(adminEntity);
+                }
             }
+            session.setCurrentAuthenticatedUser(authUser);
 
             int width = TUILayout.APP_WIDTH;
             StringBuilder authSb = new StringBuilder();

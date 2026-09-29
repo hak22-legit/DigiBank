@@ -147,22 +147,35 @@ public class UserProfileModal implements Screen {
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
         String uIdStr = "#USR-" + (d.getUserId() != null ? String.format("%02d", d.getUserId()) : "00");
-        String regDateStr = d.getRegistrationDate() != null ? d.getRegistrationDate().format(dtf) : "2026-03-12";
         String nameStr = d.getFullName() != null ? d.getFullName() : "-";
-        if (nameStr.length() > 25) nameStr = nameStr.substring(0, 22) + "...";
-        String phoneStr = d.getPhone() != null ? d.getPhone() : "+855 12 889900";
+        if (nameStr.length() > 22) nameStr = nameStr.substring(0, 19) + "...";
         String emailStr = d.getEmail() != null ? d.getEmail() : "-";
-        if (emailStr.length() > 25) emailStr = emailStr.substring(0, 22) + "...";
-        String kycStr = d.getKycVerificationLevel() != null ? d.getKycVerificationLevel() : "LEVEL_2 (FULL)";
-        String loginStatusStr = (d.getStatus() != null ? d.getStatus().name() : "ACTIVE") + " (" + d.getFailedLoginAttempts() + " failed attempts)";
+        if (emailStr.length() > 22) emailStr = emailStr.substring(0, 19) + "...";
+        String rawStatus = (d.getStatus() != null ? d.getStatus().name() : "ACTIVE");
+        String styledStatus;
         if (d.getStatus() == UserStatus.FROZEN || d.getStatus() == UserStatus.SUSPENDED) {
-            loginStatusStr = ConsoleTheme.warning(loginStatusStr);
+            styledStatus = ConsoleTheme.error(rawStatus);
+        } else {
+            styledStatus = ConsoleTheme.success(rawStatus);
         }
 
-        String r1 = String.format("  User ID         : %-20s Registration Date : %s", uIdStr, regDateStr);
-        String r2 = String.format("  Full Name       : %-20s Phone Number      : %s", nameStr, phoneStr);
-        String r3 = String.format("  Primary Email   : %-20s KYC Verification  : %s", emailStr, kycStr);
-        String r4 = String.format("  Login Status    : %-20s", loginStatusStr);
+        String regDateStr = d.getRegistrationDate() != null ? d.getRegistrationDate().format(dtf) : "2026-03-12";
+        String phoneStr = d.getPhone() != null ? d.getPhone() : "+855 12 889900";
+        String kycStr = d.getKycVerificationLevel() != null ? d.getKycVerificationLevel() : "LEVEL_2 (FULL)";
+        if (kycStr.length() > 18) kycStr = kycStr.substring(0, 15) + "...";
+        String failedAttemptsStr = String.valueOf(d.getFailedLoginAttempts());
+
+        // Left column formatting: label (17 chars) + value (padded to 23 visible chars)
+        String col1Uid = "  User ID        : " + uIdStr + " ".repeat(Math.max(0, 23 - uIdStr.length()));
+        String col1Name = "  Full Name      : " + nameStr + " ".repeat(Math.max(0, 23 - nameStr.length()));
+        String col1Email = "  Primary Email  : " + emailStr + " ".repeat(Math.max(0, 23 - emailStr.length()));
+        String col1Status = "  Account Status : " + styledStatus + " ".repeat(Math.max(0, 23 - rawStatus.length()));
+
+        // Right column formatting: label (20 chars) + value
+        String r1 = col1Uid + "Registration Date : " + regDateStr;
+        String r2 = col1Name + "Phone Number      : " + phoneStr;
+        String r3 = col1Email + "KYC Verification  : " + kycStr;
+        String r4 = col1Status + "Failed Attempts   : " + failedAttemptsStr;
 
         sb.append(TUIBox.line(r1, width)).append("\n");
         sb.append(TUIBox.line(r2, width)).append("\n");
@@ -172,28 +185,22 @@ public class UserProfileModal implements Screen {
         sb.append(TUIBox.divider(width)).append("\n");
 
         if (issuedToken != null) {
-            // SECURITY DISPATCH MODAL BOX (78 chars inside TUIBox)
-            String topBox = "┌" + "─".repeat(76) + "┐";
-            String titleBox = "│ SECURITY DISPATCH: ONE-TIME RECOVERY TOKEN ISSUED                          │";
-            String midBox = "├" + "─".repeat(76) + "┤";
+            // SECURITY DISPATCH NOTICE (Clean section within outer frame, no nested boxes)
+            sb.append(TUIBox.line("SECURITY DISPATCH • ONE-TIME RECOVERY TOKEN ISSUED", width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
 
-            String tokenLine = String.format("│ Token Code      : %s%s│", Ansi.cyan(issuedToken), " ".repeat(Math.max(0, 58 - issuedToken.length())));
-            String targetEmailStr = emailStr + " (Simulated Dispatch)";
-            if (targetEmailStr.length() > 56) targetEmailStr = targetEmailStr.substring(0, 53) + "...";
-            String emailLine = String.format("│ Target Email    : %-56s │", targetEmailStr);
-            String expLine = "│ Expiration      : 180 Seconds (3 Minutes)                                  │";
-            String auditRef = String.format("#RST-%s-%03d", LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")), d.getUserId() != null ? d.getUserId() : 0);
-            String auditLine = String.format("│ Audit Reference : %-56s │", auditRef);
-            String botBox = "└" + "─".repeat(76) + "┘";
+            String tokenBadge = ConsoleTheme.inlineHighlight("[ " + issuedToken + " ]");
+            String targetEmail = d.getEmail() != null ? d.getEmail() : "-";
+            if (targetEmail.length() > 56) targetEmail = targetEmail.substring(0, 53) + "...";
+            String auditRef = String.format("#RST-%s-%03d",
+                    LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")),
+                    d.getUserId() != null ? d.getUserId() : 0);
 
-            sb.append(TUIBox.line(topBox, width)).append("\n");
-            sb.append(TUIBox.line(titleBox, width)).append("\n");
-            sb.append(TUIBox.line(midBox, width)).append("\n");
-            sb.append(TUIBox.line(tokenLine, width)).append("\n");
-            sb.append(TUIBox.line(emailLine, width)).append("\n");
-            sb.append(TUIBox.line(expLine, width)).append("\n");
-            sb.append(TUIBox.line(auditLine, width)).append("\n");
-            sb.append(TUIBox.line(botBox, width)).append("\n");
+            sb.append(TUIBox.line("  Security Token : " + tokenBadge + "  (Simulated Dispatch Mode)", width)).append("\n");
+            sb.append(TUIBox.line("  Target Email   : " + targetEmail, width)).append("\n");
+            sb.append(TUIBox.line("  Time-To-Live   : 180 Seconds (3 Minutes)", width)).append("\n");
+            sb.append(TUIBox.line("  Audit Ref      : " + auditRef, width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
         } else {
             // Linked Accounts Compartment
             sb.append(TUIBox.line("LINKED BANK ACCOUNTS", width)).append("\n");
@@ -239,7 +246,7 @@ public class UserProfileModal implements Screen {
 
         // Footer Hint
         if (issuedToken != null) {
-            sb.append(ConsoleTheme.keyGuide("[Enter] Acknowledge & Dismiss  •  [F] Toggle Freeze  •  [Esc] Back")).append("\n");
+            sb.append(ConsoleTheme.keyGuide("  [Enter] Acknowledge & Dismiss   •   [F] Toggle Freeze   •   [Esc] Back")).append("\n");
         } else {
             sb.append(ConsoleTheme.keyGuide("[F] Toggle Freeze  •  [R] Reset Token  •  [Esc] Back")).append("\n");
         }

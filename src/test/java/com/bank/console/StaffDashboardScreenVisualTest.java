@@ -4,6 +4,7 @@ import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUILayout;
 import com.bank.console.screens.*;
 import com.bank.model.dto.AdminDTO;
+import com.bank.model.dto.UserProfileDossier;
 import com.bank.model.entity.Admin;
 import com.bank.model.entity.FraudAlert;
 import com.bank.model.entity.Loan;
@@ -71,12 +72,15 @@ public class StaffDashboardScreenVisualTest {
         String stripped = TUIBox.stripAnsi(rendered);
         assertTrue(stripped.contains("ROLE: LOAN_OFFICER"));
         assertTrue(stripped.contains("PENDING UNDERWRITING PIPELINE"));
-        assertTrue(stripped.contains("Applications in Queue: 7 Requests"));
-        assertTrue(stripped.contains("Total Volume Pending : $ 34,500.00 USD"));
-        assertTrue(stripped.contains("Approved Today : 2 ($12,000.00)"));
-        assertTrue(stripped.contains("Rejected Today : 1 Application"));
-        assertTrue(stripped.contains("Review Loan Underwriting Queue (7 Pending)"));
-        assertTrue(stripped.contains("Search Customer Borrowing History & Profiles"));
+        assertTrue(stripped.contains("QUEUE STATUS"));
+        assertTrue(stripped.contains("EXPOSURE AT RISK"));
+        assertTrue(stripped.contains("TODAY'S METRICS"));
+        assertTrue(stripped.contains("7 Requests"));
+        assertTrue(stripped.contains("34,500.00"));
+        assertTrue(stripped.contains("Approved: 2 ($12,000.00)"));
+        assertTrue(stripped.contains("Rejected: 1 Application"));
+        assertTrue(stripped.contains("Review Loan Underwriting Queue (7)"));
+        assertTrue(stripped.contains("Search Customer Borrowing History"));
         assertTrue(stripped.contains("Portfolio Performance & Active Loan Book"));
         assertTrue(stripped.contains("[0] Sign Out & Terminate Session"));
     }
@@ -213,6 +217,39 @@ public class StaffDashboardScreenVisualTest {
         for (int i = 0; i < histLines.length - 1; i++) {
             assertEquals(82, TUIBox.visibleLength(histLines[i]), "BorrowingHistoryScreen line must be 82 cols");
         }
+        assertTrue(TUIBox.visibleLength(histLines[histLines.length - 1]) <= 82, "Key guide must be <= 82 cols");
+
+        String stripped = TUIBox.stripAnsi(renderedHistory);
+        assertTrue(stripped.contains("FILTER: [Tab] ▸ [ ALL (1) ]"), "Should contain active [Tab] ALL filter");
+        assertTrue(stripped.contains("[ ACTIVE (1) ]"), "Should contain ACTIVE filter");
+        assertTrue(stripped.contains("[ REJECTED (0) ]"), "Should contain REJECTED filter");
+        assertTrue(stripped.contains("[Digits] Search"), "Should contain [Digits] Search");
+        assertTrue(stripped.contains("[N/P] Page"), "Should contain [N/P] Page");
+        assertTrue(stripped.contains("[Tab] Filter"), "Should contain [Tab] Filter");
+
+        // Verify with customer ID "103" and filterIndex = 1 (ACTIVE)
+        String rendered103 = BorrowingHistoryScreen.renderContent(
+                "103",
+                103L,
+                UserProfileDossier.builder().fullName("Men Senghak").email("haks5685@gmail.com").status(com.bank.model.enums.UserStatus.ACTIVE).build(),
+                sampleLoans,
+                0,
+                1,
+                1,
+                "Showing ACTIVE loan records for User #103. Press [Tab] to toggle filter.",
+                false,
+                width
+        );
+        String[] lines103 = rendered103.split("\n");
+        for (int i = 0; i < lines103.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines103[i]), "BorrowingHistoryScreen line 103 must be 82 cols");
+        }
+        assertTrue(TUIBox.visibleLength(lines103[lines103.length - 1]) <= 82);
+        String stripped103 = TUIBox.stripAnsi(rendered103);
+        assertTrue(stripped103.contains("Search Customer User ID: [ 103_"));
+        assertTrue(stripped103.contains("FILTER: [Tab] [ ALL (1) ]   ▸ [ ACTIVE (1) ]   [ REJECTED (0) ]"));
+        assertTrue(stripped103.contains("Customer Name : Men Senghak"));
+        assertTrue(stripped103.contains("Email Address : haks5685@gmail.com"));
 
         String renderedBook = ActiveLoanBookScreen.renderContent(
                 sampleLoans,

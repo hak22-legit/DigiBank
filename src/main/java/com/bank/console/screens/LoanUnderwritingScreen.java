@@ -3,6 +3,7 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
+import com.bank.console.TerminalInputHandler;
 import com.bank.console.components.ConsolePrompt;
 import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
@@ -29,8 +30,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.bank.model.enums.LoanStatus;
 
 /**
  * SUPER ADMIN > LOAN UNDERWRITING & DISBURSEMENT (82 Columns)
@@ -93,28 +98,26 @@ public class LoanUnderwritingScreen implements Screen {
         boolean firstRender = true;
         boolean running = true;
 
+        List<Loan> loanQueue = new ArrayList<>();
         try {
+            loanQueue = new ArrayList<>(loanController.getPendingLoans(admin));
+        } catch (Exception e) {
+            logger.error("Error fetching pending loans", e);
+        }
+
+        try {
+            TerminalInputHandler.drainBuffer(reader);
             while (running) {
                 try {
-                    List<Loan> pendingLoans;
-                    try {
-                        pendingLoans = loanController.getPendingLoans(admin);
-                    } catch (Exception e) {
-                        logger.error("Error fetching pending loans", e);
-                        pendingLoans = Collections.emptyList();
-                        statusMessage = "Status: Action completed or temporarily deferred. Press [Esc] to return.";
-                        isError = true;
+                    if (loanQueue == null) {
+                        loanQueue = new ArrayList<>();
                     }
 
-                    if (pendingLoans == null) {
-                        pendingLoans = Collections.emptyList();
+                    if (queueIndex >= loanQueue.size()) {
+                        queueIndex = Math.max(0, loanQueue.size() - 1);
                     }
 
-                    if (queueIndex >= pendingLoans.size()) {
-                        queueIndex = Math.max(0, pendingLoans.size() - 1);
-                    }
-
-                    Loan currentLoan = !pendingLoans.isEmpty() ? pendingLoans.get(queueIndex) : null;
+                    Loan currentLoan = !loanQueue.isEmpty() ? loanQueue.get(queueIndex) : null;
                     UserProfileDossier dossier = null;
                     List<Account> activeAccounts = Collections.emptyList();
 
@@ -143,25 +146,32 @@ public class LoanUnderwritingScreen implements Screen {
                         }
                     }
 
+                    boolean isActioned = (currentLoan != null && (currentLoan.getStatus() == LoanStatus.REJECTED
+                            || currentLoan.getStatus() == LoanStatus.APPROVED || currentLoan.getStatus() == LoanStatus.ACTIVE));
+
                     Account disbursementAccount = (!activeAccounts.isEmpty() && selectedAccountIndex < activeAccounts.size())
                             ? activeAccounts.get(selectedAccountIndex) : null;
 
                     String roleTag = (admin.getRole() == com.bank.model.enums.AdminRole.LOAN_OFFICER) ? "LOAN OFFICER" : "SUPER ADMIN";
-                    String rendered = renderContent(roleTag, currentLoan, dossier, disbursementAccount, queueIndex, pendingLoans.size(),
+                    String rendered = renderContent(roleTag, currentLoan, dossier, disbursementAccount, queueIndex, loanQueue.size(),
                             approvedAmountOverride, interestRateOverride, focusIndex, statusMessage, isError, width);
                     ScreenRenderer.render(rendered, firstRender);
                     firstRender = false;
 
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE || (event.action() == KeyAction.CHAR && (event.ch() == 'b' || event.ch() == 'B'))) {
+                    TerminalInputHandler.KeyCode event = TerminalInputHandler.readNavigationKey(reader);
+                    if (TerminalInputHandler.isEscapeOrBack(event) || event.is('0')) {
                         running = false;
                         navigator.pop();
                         return;
-                    } else if (event.action() == KeyAction.TAB || (event.action() == KeyAction.DOWN && focusIndex < 2)) {
-                        focusIndex = (focusIndex + 1) % 3;
-                    } else if (event.action() == KeyAction.SHIFT_TAB || (event.action() == KeyAction.UP && focusIndex > 0)) {
-                        focusIndex = (focusIndex - 1 + 3) % 3;
-                    } else if (event.action() == KeyAction.LEFT || (event.action() == KeyAction.CHAR && (event.ch() == 'h' || event.ch() == 'H'))) {
+                    } else if (event.isTab() || ((event.isDown() || event.is('j') || event.is('J')) && focusIndex < 2)) {
+                        if (!isActioned) {
+                            focusIndex = (focusIndex + 1) % 3;
+                        }
+                    } else if (event.isShiftTab() || ((event.isUp() || event.is('k') || event.is('K')) && focusIndex > 0)) {
+                        if (!isActioned) {
+                            focusIndex = (focusIndex - 1 + 3) % 3;
+                        }
+                    } else if (event.isLeft() || event.is('P') || event.is('p') || event.is('h') || event.is('H')) {
                         if (queueIndex > 0) {
                             queueIndex--;
                             approvedAmountOverride = null;
@@ -171,8 +181,8 @@ public class LoanUnderwritingScreen implements Screen {
                             statusMessage = "Switched to previous loan in queue.";
                             isError = false;
                         }
-                    } else if (event.action() == KeyAction.RIGHT || (event.action() == KeyAction.CHAR && (event.ch() == 'l' || event.ch() == 'L' || event.ch() == 'n' || event.ch() == 'N' || event.ch() == '3'))) {
-                        if (queueIndex < pendingLoans.size() - 1) {
+                    } else if (event.isRight() || event.is('N') || event.is('n') || event.is('l') || event.is('L') || event.is('3')) {
+                        if (queueIndex < loanQueue.size() - 1) {
                             queueIndex++;
                             approvedAmountOverride = null;
                             interestRateOverride = null;
@@ -181,17 +191,31 @@ public class LoanUnderwritingScreen implements Screen {
                             statusMessage = "Switched to next loan in queue.";
                             isError = false;
                         }
-                    } else if (event.action() == KeyAction.CHAR && (event.ch() == 'a' || event.ch() == 'A' || event.ch() == '1')) {
-                        // Approve & Disburse
-                        if (currentLoan != null && disbursementAccount != null) {
+                    } else if (event.is('A') || event.is('a') || event.is('1')) {
+                        // Approve & Disburse (only if PENDING)
+                        if (currentLoan == null) {
+                            statusMessage = "No loan selected in underwriting queue.";
+                            isError = true;
+                        } else if (currentLoan.getStatus() != LoanStatus.PENDING) {
+                            statusMessage = "Cannot approve: application has already been actioned (" + currentLoan.getStatus() + ").";
+                            isError = true;
+                        } else if (disbursementAccount == null) {
+                            statusMessage = "Cannot approve: active disbursement account required.";
+                            isError = true;
+                        } else {
                             try {
-                                loanController.approveLoan(admin, currentLoan.getLoanId(),
+                                Loan updated = loanController.approveLoan(admin, currentLoan.getLoanId(),
                                         disbursementAccount.getAccountId(),
                                         approvedAmountOverride,
                                         interestRateOverride,
                                         currentLoan.getTermMonths());
-                                statusMessage = String.format("✔ Loan #%03d approved! Disbursed to %s.",
-                                        currentLoan.getLoanId(), disbursementAccount.getAccountNumber());
+                                Long approvedId = currentLoan.getLoanId();
+                                String accNum = disbursementAccount.getAccountNumber();
+                                loanQueue.remove(queueIndex);
+                                if (queueIndex >= loanQueue.size() && !loanQueue.isEmpty()) {
+                                    queueIndex = loanQueue.size() - 1;
+                                }
+                                statusMessage = String.format("✔ Loan #%03d approved! Disbursed to %s.", approvedId, accNum);
                                 isError = false;
                                 approvedAmountOverride = null;
                                 interestRateOverride = null;
@@ -201,20 +225,25 @@ public class LoanUnderwritingScreen implements Screen {
                                 statusMessage = "Approval failed: " + e.getMessage();
                                 isError = true;
                             }
-                        } else if (currentLoan == null) {
+                        }
+                    } else if (event.is('R') || event.is('r') || event.is('2')) {
+                        // In-Place Rejection (only if PENDING)
+                        if (currentLoan == null) {
                             statusMessage = "No loan selected in underwriting queue.";
                             isError = true;
-                        } else {
-                            statusMessage = "Cannot approve: active disbursement account required.";
+                        } else if (currentLoan.getStatus() != LoanStatus.PENDING) {
+                            statusMessage = "Cannot reject: application has already been actioned (" + currentLoan.getStatus() + ").";
                             isError = true;
-                        }
-                    } else if (event.action() == KeyAction.CHAR && (event.ch() == 'r' || event.ch() == 'R' || event.ch() == '2')) {
-                        // In-Place Rejection without Scanner breakout
-                        if (currentLoan != null) {
+                        } else {
                             try {
-                                String reason = "Credit criteria not met";
-                                loanController.rejectLoan(admin, currentLoan.getLoanId(), reason);
-                                statusMessage = String.format("Loan #%03d rejected (Reason: %s).", currentLoan.getLoanId(), reason);
+                                String reason = "Credit criteria not met (Score < 600, DTI > 40%)";
+                                Loan updated = loanController.rejectLoan(admin, currentLoan.getLoanId(), reason);
+                                Long rejectedId = currentLoan.getLoanId();
+                                loanQueue.remove(queueIndex);
+                                if (queueIndex >= loanQueue.size() && !loanQueue.isEmpty()) {
+                                    queueIndex = loanQueue.size() - 1;
+                                }
+                                statusMessage = String.format("Application #%03d rejected. Record archived to underwriting history.", rejectedId);
                                 isError = false;
                                 approvedAmountOverride = null;
                                 interestRateOverride = null;
@@ -224,11 +253,8 @@ public class LoanUnderwritingScreen implements Screen {
                                 statusMessage = "Rejection failed: " + e.getMessage();
                                 isError = true;
                             }
-                        } else {
-                            statusMessage = "No loan selected in underwriting queue.";
-                            isError = true;
                         }
-                    } else if (event.action() == KeyAction.CHAR && (event.ch() == '+' || event.ch() == '=')) {
+                    } else if (!isActioned && (event.is('+') || event.is('='))) {
                         if (focusIndex == 0 && approvedAmountOverride != null) {
                             approvedAmountOverride = approvedAmountOverride.add(new BigDecimal("500.00"));
                             statusMessage = "Approved principal adjusted to $" + DF.format(approvedAmountOverride);
@@ -238,7 +264,7 @@ public class LoanUnderwritingScreen implements Screen {
                             statusMessage = "Annual interest rate adjusted to " + interestRateOverride + "%";
                             isError = false;
                         }
-                    } else if (event.action() == KeyAction.CHAR && (event.ch() == '-' || event.ch() == '_')) {
+                    } else if (!isActioned && (event.is('-') || event.is('_'))) {
                         if (focusIndex == 0 && approvedAmountOverride != null && approvedAmountOverride.compareTo(new BigDecimal("500.00")) > 0) {
                             approvedAmountOverride = approvedAmountOverride.subtract(new BigDecimal("500.00"));
                             statusMessage = "Approved principal adjusted to $" + DF.format(approvedAmountOverride);
@@ -248,7 +274,7 @@ public class LoanUnderwritingScreen implements Screen {
                             statusMessage = "Annual interest rate adjusted to " + interestRateOverride + "%";
                             isError = false;
                         }
-                    } else if (event.action() == KeyAction.ENTER || (event.action() == KeyAction.CHAR && event.ch() == ' ')) {
+                    } else if (!isActioned && (event.isEnter() || event.is(' '))) {
                         if (focusIndex == 0) {
                             // Quick toggle between requested amount and rounded limit
                             if (currentLoan != null && currentLoan.getRequestedAmount() != null) {
@@ -274,53 +300,6 @@ public class LoanUnderwritingScreen implements Screen {
                                 selectedAccountIndex = (selectedAccountIndex + 1) % activeAccounts.size();
                                 statusMessage = "Disbursement target account cycled.";
                                 isError = false;
-                            }
-                        } else if (focusIndex == 3) {
-                            // Trigger [1] Approve & Disburse
-                            if (currentLoan != null && disbursementAccount != null) {
-                                try {
-                                    loanController.approveLoan(admin, currentLoan.getLoanId(),
-                                            disbursementAccount.getAccountId(),
-                                            approvedAmountOverride,
-                                            interestRateOverride,
-                                            currentLoan.getTermMonths());
-                                    statusMessage = String.format("✔ Loan #%03d approved! Disbursed to %s.",
-                                            currentLoan.getLoanId(), disbursementAccount.getAccountNumber());
-                                    isError = false;
-                                    approvedAmountOverride = null;
-                                    interestRateOverride = null;
-                                    selectedAccountIndex = 0;
-                                    focusIndex = 0;
-                                } catch (Exception e) {
-                                    statusMessage = "Approval failed: " + e.getMessage();
-                                    isError = true;
-                                }
-                            } else if (currentLoan == null) {
-                                statusMessage = "No loan selected in underwriting queue.";
-                                isError = true;
-                            } else {
-                                statusMessage = "Cannot approve: active disbursement account required.";
-                                isError = true;
-                            }
-                        } else if (focusIndex == 4) {
-                            // Trigger [2] Reject
-                            if (currentLoan != null) {
-                                try {
-                                    String reason = "Credit criteria not met";
-                                    loanController.rejectLoan(admin, currentLoan.getLoanId(), reason);
-                                    statusMessage = String.format("Loan #%03d rejected (Reason: %s).", currentLoan.getLoanId(), reason);
-                                    isError = false;
-                                    approvedAmountOverride = null;
-                                    interestRateOverride = null;
-                                    selectedAccountIndex = 0;
-                                    focusIndex = 0;
-                                } catch (Exception e) {
-                                    statusMessage = "Rejection failed: " + e.getMessage();
-                                    isError = true;
-                                }
-                            } else {
-                                statusMessage = "No loan selected in underwriting queue.";
-                                isError = true;
                             }
                         }
                     }
@@ -373,11 +352,24 @@ public class LoanUnderwritingScreen implements Screen {
             return sb.toString();
         }
 
-        // Header combining UNDERWRITING QUEUE and STATUS: PENDING REVIEW
+        // Header combining UNDERWRITING QUEUE and STATUS:
         String queueHeader = String.format("UNDERWRITING QUEUE: Application %d of %d", queueIndex + 1, totalQueue);
-        String statusHeader = "STATUS: PENDING REVIEW";
+        boolean isRejected = (loan.getStatus() == LoanStatus.REJECTED);
+        boolean isApproved = (loan.getStatus() == LoanStatus.APPROVED || loan.getStatus() == LoanStatus.ACTIVE);
+        String statusHeader;
+        String coloredStatusHeader;
+        if (isRejected) {
+            statusHeader = "STATUS: REJECTED";
+            coloredStatusHeader = "\033[31m" + statusHeader + "\033[0m";
+        } else if (isApproved) {
+            statusHeader = "STATUS: APPROVED";
+            coloredStatusHeader = "\033[32m" + statusHeader + "\033[0m";
+        } else {
+            statusHeader = "STATUS: PENDING REVIEW";
+            coloredStatusHeader = ConsoleTheme.warning(statusHeader);
+        }
         int pad = Math.max(2, width - 4 - 1 - queueHeader.length() - statusHeader.length());
-        sb.append(TUIBox.line(" " + ConsoleTheme.bold(queueHeader) + " ".repeat(pad) + ConsoleTheme.warning(statusHeader), width)).append("\n");
+        sb.append(TUIBox.line(" " + ConsoleTheme.bold(queueHeader) + " ".repeat(pad) + coloredStatusHeader, width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
         // Section 1: BORROWER FINANCIAL PROFILE
@@ -443,42 +435,73 @@ public class LoanUnderwritingScreen implements Screen {
         sb.append(TUIBox.emptyLine(width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
-        // Section 3: UNDERWRITING DECISION PARAMETERS (Focusable)
-        sb.append(TUIBox.line(" " + ConsoleTheme.bold("UNDERWRITING DECISION PARAMETERS"), width)).append("\n");
-        sb.append(TUIBox.emptyLine(width)).append("\n");
+        if (isRejected) {
+            // Section 3: FINAL UNDERWRITING DECISION
+            sb.append(TUIBox.line(" " + ConsoleTheme.bold("FINAL UNDERWRITING DECISION"), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
 
-        // Field 0: Approved Principal
-        String pPrefix = (focusIndex == 0) ? "▸ " : "  ";
-        BigDecimal appVal = approvedAmount != null ? approvedAmount : principal;
-        String pVal = "$ " + df.format(appVal);
-        String pLine = String.format("  %s%-21s [ %-43s ]    ", pPrefix, "Approved Principal  :", pVal);
-        sb.append(TUIBox.line(focusIndex == 0 ? ConsoleTheme.inlineHighlight(pLine) : pLine, width)).append("\n");
+            String dispVal = Ansi.red("REJECTED (ADVERSE ACTION)");
+            String dispLine = String.format("  %-17s: %s", "Disposition", dispVal);
+            sb.append(TUIBox.line(dispLine, width)).append("\n");
 
-        // Field 1: Annual Rate
-        String rPrefix = (focusIndex == 1) ? "▸ " : "  ";
-        BigDecimal rateVal = interestRate != null ? interestRate : calculateBaseInterestRate(credit);
-        String rVal = String.format("%.2f %%", rateVal);
-        String rLine = String.format("  %s%-21s [ %-43s ]    ", rPrefix, "Annual Rate (%)     :", rVal);
-        sb.append(TUIBox.line(focusIndex == 1 ? ConsoleTheme.inlineHighlight(rLine) : rLine, width)).append("\n");
+            String reason = (loan.getRejectionReason() != null && !loan.getRejectionReason().isBlank())
+                    ? loan.getRejectionReason()
+                    : "Credit criteria not met (Score < 600, DTI > 40%)";
+            String reasonLine = String.format("  %-17s: %s", "Primary Reason", reason);
+            sb.append(TUIBox.line(reasonLine, width)).append("\n");
 
-        // Field 2: Target Account
-        String aPrefix = (focusIndex == 2) ? "▸ " : "  ";
-        String acctInfo = "No active eligible account found";
-        if (disbursementAccount != null) {
-            acctInfo = String.format("%s (%s - Bal: $%s)",
-                    disbursementAccount.getAccountNumber(),
-                    disbursementAccount.getAccountType(),
-                    df.format(disbursementAccount.getBalance() != null ? disbursementAccount.getBalance() : BigDecimal.ZERO));
+            String officerId = (loan.getApprovedBy() != null) ? String.format("#ADM-%02d", loan.getApprovedBy()) : "#ADM-01";
+            String roleStr = safeRole.replace(" ", "_");
+            String timeStr = (loan.getApprovedAt() != null)
+                    ? loan.getApprovedAt().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                    : LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            String actionedByVal = String.format("%s (%s) at %s", officerId, roleStr, timeStr);
+            String actionedLine = String.format("  %-17s: %s", "Actioned By", actionedByVal);
+            sb.append(TUIBox.line(actionedLine, width)).append("\n");
+
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+        } else {
+            // Section 3: UNDERWRITING DECISION PARAMETERS (Focusable)
+            sb.append(TUIBox.line(" " + ConsoleTheme.bold("UNDERWRITING DECISION PARAMETERS"), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+
+            // Field 0: Approved Principal
+            String pPrefix = (focusIndex == 0) ? "▸ " : "  ";
+            BigDecimal appVal = approvedAmount != null ? approvedAmount : principal;
+            String pVal = "$ " + df.format(appVal);
+            String pLine = String.format("  %s%-21s [ %-43s ]    ", pPrefix, "Approved Principal  :", pVal);
+            sb.append(TUIBox.line(focusIndex == 0 ? ConsoleTheme.inlineHighlight(pLine) : pLine, width)).append("\n");
+
+            // Field 1: Annual Rate
+            String rPrefix = (focusIndex == 1) ? "▸ " : "  ";
+            BigDecimal rateVal = interestRate != null ? interestRate : calculateBaseInterestRate(credit);
+            String rVal = String.format("%.2f %%", rateVal);
+            String rLine = String.format("  %s%-21s [ %-43s ]    ", rPrefix, "Annual Rate (%)     :", rVal);
+            sb.append(TUIBox.line(focusIndex == 1 ? ConsoleTheme.inlineHighlight(rLine) : rLine, width)).append("\n");
+
+            // Field 2: Target Account
+            String aPrefix = (focusIndex == 2) ? "▸ " : "  ";
+            String acctInfo = "No active eligible account found";
+            if (disbursementAccount != null) {
+                acctInfo = String.format("%s (%s - Bal: $%s)",
+                        disbursementAccount.getAccountNumber(),
+                        disbursementAccount.getAccountType(),
+                        df.format(disbursementAccount.getBalance() != null ? disbursementAccount.getBalance() : BigDecimal.ZERO));
+            }
+            if (acctInfo.length() > 43) acctInfo = acctInfo.substring(0, 40) + "...";
+            String aLine = String.format("  %s%-21s [ %-43s ]    ", aPrefix, "Disbursement Target :", acctInfo);
+            sb.append(TUIBox.line(focusIndex == 2 ? ConsoleTheme.inlineHighlight(aLine) : aLine, width)).append("\n");
+
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
         }
-        if (acctInfo.length() > 43) acctInfo = acctInfo.substring(0, 40) + "...";
-        String aLine = String.format("  %s%-21s [ %-43s ]    ", aPrefix, "Disbursement Target :", acctInfo);
-        sb.append(TUIBox.line(focusIndex == 2 ? ConsoleTheme.inlineHighlight(aLine) : aLine, width)).append("\n");
-
-        sb.append(TUIBox.emptyLine(width)).append("\n");
-        sb.append(TUIBox.divider(width)).append("\n");
 
         // Status Line
-        String currentStatus = (statusMessage != null) ? statusMessage : "Adjust rate or amount. Press [A] to approve or [R] to reject.";
+        String defaultStatus = isRejected
+                ? String.format("Application #%03d rejected. Record archived to underwriting history.", loan.getLoanId())
+                : "Adjust rate or amount. Press [A] to approve or [R] to reject.";
+        String currentStatus = (statusMessage != null) ? statusMessage : defaultStatus;
         if (currentStatus.startsWith("Status: ")) {
             currentStatus = currentStatus.substring(8);
         }
@@ -490,7 +513,11 @@ public class LoanUnderwritingScreen implements Screen {
         sb.append(TUIBox.bottom(width)).append("\n");
 
         // Footer Hint
-        sb.append(ConsoleTheme.keyGuide("[Tab/↓] Next Field  •  [A] Approve & Disburse  •  [R] Reject  •  [N] Next  •  [Esc] Back")).append("\n");
+        if (isRejected || isApproved) {
+            sb.append(ConsoleTheme.keyGuide("[N] Next Application  •  [P] Previous  •  [Esc] Back to Queue")).append("\n");
+        } else {
+            sb.append(ConsoleTheme.keyGuide("[Tab/↓] Next Field  •  [A] Approve & Disburse  •  [R] Reject  •  [N] Next  •  [Esc] Back")).append("\n");
+        }
 
         return sb.toString();
     }

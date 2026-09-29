@@ -99,15 +99,13 @@ public class GlobalLedgerScreen implements Screen {
         int width = TUILayout.APP_WIDTH;
         Terminal terminal = session.getTerminal();
         Attributes origAttributes = terminal.enterRawMode();
-        NonBlockingReader reader = terminal.reader();
-
-        int currentPage = 1;
+        NonBlockingReader reader = terminal.reader();        int currentPage = 1;
         int pageSize = 5;
         int selectedIndex = 0;
         CurrencyFilter activeCcy = CurrencyFilter.ALL;
         String searchTerm = null;
-        String statusMessage = "Showing all multi-currency accounts. Press [/] to search.";
-        boolean isError = false;
+        boolean isSearchMode = false;
+        StringBuilder searchBuf = new StringBuilder();
         boolean firstRender = true;
 
         try {
@@ -135,97 +133,120 @@ public class GlobalLedgerScreen implements Screen {
                 if (selectedIndex >= items.size() && !items.isEmpty()) {
                     selectedIndex = items.size() - 1;
                 }
+                if (selectedIndex < 0 && !items.isEmpty()) {
+                    selectedIndex = 0;
+                }
+
+                String statusMessage;
+                if (searchTerm != null && !searchTerm.isBlank()) {
+                    long matchCount = tabCounts.getOrDefault(activeCcy, (long) items.size());
+                    statusMessage = String.format("Status: Found %d accounts matching \"%s\". Press [X] to clear search.",
+                            matchCount, searchTerm);
+                } else if (!items.isEmpty() && selectedIndex >= 0 && selectedIndex < items.size()) {
+                    GlobalLedgerItem sel = items.get(selectedIndex);
+                    String accNum = sel.getAccountNumber() != null ? sel.getAccountNumber() : "DGB-000000000";
+                    statusMessage = "Status: Account " + accNum + " selected. Press [Enter] for Statement Ledger.";
+                } else {
+                    statusMessage = "Status: No accounts found matching current criteria.";
+                }
 
                 String rendered = renderContent(items, vaultTotals, currentPage, totalPages, selectedIndex,
-                        activeCcy, searchTerm, tabCounts, statusMessage, isError, width);
+                        activeCcy, searchTerm, tabCounts, isSearchMode, searchBuf.toString(), statusMessage, false, width);
                 ScreenRenderer.render(rendered, firstRender);
                 firstRender = false;
 
                 KeyEvent event = TUIFormHelper.readKey(reader);
-                if (event.action() == KeyAction.ESCAPE || (event.action() == KeyAction.CHAR && (event.ch() == 'b' || event.ch() == 'B'))) {
-                    navigator.pop();
-                    return;
-                } else if (event.action() == KeyAction.TAB) {
-                    // Cycle cleanly across the 3 defined tabs: ALL -> USD -> KHR -> ALL
-                    activeCcy = switch (activeCcy) {
-                        case ALL -> CurrencyFilter.USD;
-                        case USD -> CurrencyFilter.KHR;
-                        case KHR -> CurrencyFilter.ALL;
-                    };
-                    currentPage = 1;
-                    selectedIndex = 0;
-                    statusMessage = switch (activeCcy) {
-                        case ALL -> "Showing all multi-currency accounts. Press [/] to search.";
-                        case USD -> "Filtered by USD accounts. Press [/] to search or [1] for ALL.";
-                        case KHR -> "Filtered by KHR accounts. Press [/] to search or [1] for ALL.";
-                    };
-                    isError = false;
-                } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
-                    if (selectedIndex > 0) {
-                        selectedIndex--;
-                    } else if (currentPage > 1) {
-                        currentPage--;
-                        selectedIndex = pageSize - 1;
-                    }
-                } else if (event.action() == KeyAction.DOWN || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
-                    if (selectedIndex < items.size() - 1) {
-                        selectedIndex++;
-                    } else if (currentPage < totalPages) {
-                        currentPage++;
-                        selectedIndex = 0;
-                    }
-                } else if (event.action() == KeyAction.LEFT || (event.action() == KeyAction.CHAR && (event.ch() == 'h' || event.ch() == 'H'))) {
-                    if (currentPage > 1) {
-                        currentPage--;
-                        selectedIndex = 0;
-                    }
-                } else if (event.action() == KeyAction.RIGHT) {
-                    if (currentPage < totalPages) {
-                        currentPage++;
-                        selectedIndex = 0;
-                    }
-                } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
-                    char c = event.ch();
-                    if (c == '1') {
-                        activeCcy = CurrencyFilter.ALL;
-                        currentPage = 1;
-                        selectedIndex = 0;
-                        statusMessage = "Showing all multi-currency accounts. Press [/] to search.";
-                        isError = false;
-                    } else if (c == '2') {
-                        activeCcy = CurrencyFilter.USD;
-                        currentPage = 1;
-                        selectedIndex = 0;
-                        statusMessage = "Filtered by USD accounts. Press [/] to search or [1] for ALL.";
-                        isError = false;
-                    } else if (c == '3') {
-                        activeCcy = CurrencyFilter.KHR;
-                        currentPage = 1;
-                        selectedIndex = 0;
-                        statusMessage = "Filtered by KHR accounts. Press [/] to search or [1] for ALL.";
-                        isError = false;
-                    } else if (c == '/' || c == 's' || c == 'S') {
-                        terminal.setAttributes(origAttributes);
-                        String input = ConsolePrompt.promptOptional("Enter search query (Account No / Owner Name)", searchTerm != null ? searchTerm : "");
-                        terminal.enterRawMode();
-                        firstRender = true;
-                        if (input != null && !input.trim().isEmpty()) {
-                            searchTerm = input.trim();
-                            statusMessage = "Filter: \"" + searchTerm + "\". Press [/] to change.";
-                        } else {
-                            searchTerm = null;
-                            statusMessage = "Showing all multi-currency accounts. Press [/] to search.";
+
+                if (isSearchMode) {
+                    if (event.action() == KeyAction.ESCAPE) {
+                        isSearchMode = false;
+                        searchBuf.setLength(0);
+                    } else if (event.action() == KeyAction.BACKSPACE) {
+                        if (searchBuf.length() > 0) {
+                            searchBuf.deleteCharAt(searchBuf.length() - 1);
                         }
+                    } else if (event.action() == KeyAction.ENTER) {
+                        String q = searchBuf.toString().trim();
+                        searchTerm = q.isEmpty() ? null : q;
+                        isSearchMode = false;
                         currentPage = 1;
                         selectedIndex = 0;
-                        isError = false;
-                    } else if (c == 'l' || c == 'L') {
+                    } else if (event.action() == KeyAction.CHAR || event.action() == KeyAction.DIGIT) {
+                        char ch = event.ch();
+                        if (searchBuf.length() < 60 && ch >= 32 && ch <= 126) {
+                            searchBuf.append(ch);
+                        }
+                    }
+                } else {
+                    if (event.action() == KeyAction.ESCAPE || (event.action() == KeyAction.CHAR && (event.ch() == 'b' || event.ch() == 'B'))) {
+                        navigator.pop();
+                        return;
+                    } else if (event.action() == KeyAction.TAB) {
+                        activeCcy = switch (activeCcy) {
+                            case ALL -> CurrencyFilter.USD;
+                            case USD -> CurrencyFilter.KHR;
+                            case KHR -> CurrencyFilter.ALL;
+                        };
+                        currentPage = 1;
+                        selectedIndex = 0;
+                    } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
+                        if (selectedIndex > 0) {
+                            selectedIndex--;
+                        } else if (currentPage > 1) {
+                            currentPage--;
+                            selectedIndex = pageSize - 1;
+                        }
+                    } else if (event.action() == KeyAction.DOWN || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
+                        if (selectedIndex < items.size() - 1) {
+                            selectedIndex++;
+                        } else if (currentPage < totalPages) {
+                            currentPage++;
+                            selectedIndex = 0;
+                        }
+                    } else if (event.action() == KeyAction.LEFT || (event.action() == KeyAction.CHAR && (event.ch() == 'h' || event.ch() == 'H'))) {
+                        if (currentPage > 1) {
+                            currentPage--;
+                            selectedIndex = 0;
+                        }
+                    } else if (event.action() == KeyAction.RIGHT) {
+                        if (currentPage < totalPages) {
+                            currentPage++;
+                            selectedIndex = 0;
+                        }
+                    } else if (event.action() == KeyAction.CHAR && (event.ch() == 'x' || event.ch() == 'X') && searchTerm != null) {
+                        searchTerm = null;
+                        searchBuf.setLength(0);
+                        currentPage = 1;
+                        selectedIndex = 0;
+                    } else if (event.action() == KeyAction.CHAR && (event.ch() == '/' || event.ch() == 'f' || event.ch() == 'F')) {
+                        isSearchMode = true;
+                        searchBuf.setLength(0);
+                    } else if (event.action() == KeyAction.CHAR && (event.ch() == 'a' || event.ch() == 'A')) {
+                        terminal.setAttributes(origAttributes);
+                        navigator.push(new AuditLogScreen(adminController));
+                        return;
+                    } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
+                        char c = event.ch();
+                        if (c == '1') {
+                            activeCcy = CurrencyFilter.ALL;
+                            currentPage = 1;
+                            selectedIndex = 0;
+                        } else if (c == '2') {
+                            activeCcy = CurrencyFilter.USD;
+                            currentPage = 1;
+                            selectedIndex = 0;
+                        } else if (c == '3') {
+                            activeCcy = CurrencyFilter.KHR;
+                            currentPage = 1;
+                            selectedIndex = 0;
+                        } else if (c == 'l' || c == 'L') {
+                            inspectLedger(navigator, terminal, origAttributes, items, selectedIndex);
+                            return;
+                        }
+                    } else if (event.action() == KeyAction.ENTER) {
                         inspectLedger(navigator, terminal, origAttributes, items, selectedIndex);
                         return;
                     }
-                } else if (event.action() == KeyAction.ENTER) {
-                    inspectLedger(navigator, terminal, origAttributes, items, selectedIndex);
-                    return;
                 }
             }
         } catch (IOException e) {
@@ -238,13 +259,17 @@ public class GlobalLedgerScreen implements Screen {
     private void inspectLedger(ScreenNavigator navigator, Terminal terminal, Attributes origAttributes,
                                List<GlobalLedgerItem> items, int selectedIndex) {
         terminal.setAttributes(origAttributes);
-        navigator.push(new AuditLogScreen(adminController));
+        if (items != null && selectedIndex >= 0 && selectedIndex < items.size()) {
+            GlobalLedgerItem selected = items.get(selectedIndex);
+            navigator.push(new AccountStatementLedgerScreen(adminController, selected));
+        }
     }
 
     public static String renderContent(List<GlobalLedgerItem> items, Map<Currency, BigDecimal> vaultTotals,
                                        int currentPage, int totalPages, int selectedIndex,
                                        CurrencyFilter activeCcy, String searchTerm,
                                        Map<CurrencyFilter, Long> tabCounts,
+                                       boolean isSearchMode, String searchBuf,
                                        String statusMessage, boolean isError, int width) {
         StringBuilder sb = new StringBuilder();
         DecimalFormat usdDf = new DecimalFormat("#,##0.00");
@@ -257,7 +282,7 @@ public class GlobalLedgerScreen implements Screen {
         // Vault Summary Compartment
         BigDecimal totalUsd = vaultTotals != null ? vaultTotals.getOrDefault(Currency.USD, BigDecimal.ZERO) : BigDecimal.ZERO;
         BigDecimal totalKhr = vaultTotals != null ? vaultTotals.getOrDefault(Currency.KHR, BigDecimal.ZERO) : BigDecimal.ZERO;
-        String vaultLine = String.format("TOTAL VAULT ASSETS : $ %s USD  |  ៛ %s KHR",
+        String vaultLine = String.format("TOTAL VAULT ASSETS : $ %s USD   │   ៛ %s KHR",
                 usdDf.format(totalUsd), khrDf.format(totalKhr));
         sb.append(TUIBox.line(ConsoleTheme.bold(vaultLine), width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
@@ -274,46 +299,74 @@ public class GlobalLedgerScreen implements Screen {
             countKhr = items.stream().filter(i -> i.getCurrency() == Currency.KHR).count();
         }
 
-        String t1 = (activeCcy == CurrencyFilter.ALL)
-                ? "▸ " + ConsoleTheme.highlight("[1] ALL (" + countAll + ")")
-                : "  [1] ALL (" + countAll + ")";
-        String t2 = (activeCcy == CurrencyFilter.USD)
-                ? "▸ " + ConsoleTheme.highlight("[2] USD (" + countUsd + ")")
-                : "  [2] USD (" + countUsd + ")";
-        String t3 = (activeCcy == CurrencyFilter.KHR)
-                ? "▸ " + ConsoleTheme.highlight("[3] KHR (" + countKhr + ")")
-                : "  [3] KHR (" + countKhr + ")";
+        String tab1 = (activeCcy == CurrencyFilter.ALL) ? "▸ [1] ALL (" + countAll + ")" : "  [1] ALL (" + countAll + ")";
+        String tab2 = (activeCcy == CurrencyFilter.USD) ? "▸ [2] USD (" + countUsd + ")" : "  [2] USD (" + countUsd + ")";
+        String tab3 = (activeCcy == CurrencyFilter.KHR) ? "▸ [3] KHR (" + countKhr + ")" : "  [3] KHR (" + countKhr + ")";
+
+        String tab1Padded = String.format("%-15s", tab1);
+        if (tab1Padded.length() > 15) tab1Padded = tab1Padded.substring(0, 15);
+        String tab2Padded = String.format("%-15s", tab2);
+        if (tab2Padded.length() > 15) tab2Padded = tab2Padded.substring(0, 15);
+        String tab3Padded = String.format("%-14s", tab3);
+        if (tab3Padded.length() > 14) tab3Padded = tab3Padded.substring(0, 14);
+
+        String h1 = (activeCcy == CurrencyFilter.ALL) ? ConsoleTheme.inlineHighlight(tab1Padded) : tab1Padded;
+        String h2 = (activeCcy == CurrencyFilter.USD) ? ConsoleTheme.inlineHighlight(tab2Padded) : tab2Padded;
+        String h3 = (activeCcy == CurrencyFilter.KHR) ? ConsoleTheme.inlineHighlight(tab3Padded) : tab3Padded;
+        String tabs = h1 + " " + h2 + " " + h3; // visible: 15 + 1 + 15 + 1 + 14 = 46 chars
 
         String filterDisplay = (searchTerm != null && !searchTerm.trim().isEmpty())
-                ? "\"" + searchTerm.trim() + "\""
-                : "None";
-        if (filterDisplay.length() > 10) {
-            filterDisplay = filterDisplay.substring(0, 8) + "..\"";
+                ? "\"" + searchTerm.trim().toUpperCase() + "\""
+                : "NONE";
+        if (filterDisplay.length() > 9) {
+            filterDisplay = filterDisplay.substring(0, 7) + "..\"";
+        }
+        String filterStatus = String.format("%-10s", filterDisplay);
+
+        String innerContent = " CCY VIEW: "
+                + tabs
+                + ConsoleTheme.border(" │ ")
+                + "FILTER: "
+                + filterStatus
+                + "  "; // 11 + 46 + 3 + 8 + 10 + 2 = 80 chars
+
+        int innerVis = TUIBox.visibleLength(innerContent);
+        if (innerVis < 80) {
+            innerContent = innerContent + " ".repeat(80 - innerVis);
+        } else if (innerVis > 80) {
+            // Trim any excess padding before border
+            int excess = innerVis - 80;
+            if (innerContent.endsWith(" ".repeat(excess))) {
+                innerContent = innerContent.substring(0, innerContent.length() - excess);
+            }
         }
 
-        String tabLine = String.format("CCY: %s      %s      %s     | Filter: %s",
-                t1, t2, t3, filterDisplay);
-        sb.append(TUIBox.line(tabLine, width)).append("\n");
+        String ccyLine = ConsoleTheme.border("│") + innerContent + ConsoleTheme.border("│");
+        sb.append(ccyLine).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
-        // Table Header: 78 chars visible
-        String th = String.format("  %-13s  %-14s %-9s %-4s %14s   %-6s %-7s",
-                "ACC NO.", "OWNER", "TYPE", "CCY", "BALANCE", "RISK", "STATUS");
+        // Table Header: 78 chars visible inside TUIBox.line
+        String th = String.format(" %-14s %-16s %-9s %-4s %14s %-6s %-8s",
+                "ACC NUMBER", "OWNER NAME", "TYPE", "CCY", "BALANCE", "RISK", "STATUS");
         sb.append(TUIBox.line(th, width)).append("\n");
-        sb.append(TUIBox.line("  " + "─".repeat(76), width)).append("\n");
+        sb.append(TUIBox.line("─".repeat(78), width)).append("\n");
 
         if (items != null && !items.isEmpty()) {
             for (int i = 0; i < items.size(); i++) {
                 GlobalLedgerItem item = items.get(i);
                 boolean isSelected = (i == selectedIndex);
 
-                String prefix = isSelected ? "▸ " : "  ";
+                String prefix = isSelected ? "▸" : " ";
 
-                String accNo = item.getAccountNumber() != null ? item.getAccountNumber() : "DGB-000000000";
-                if (accNo.length() > 13) accNo = accNo.substring(0, 13);
+                String accNo = (item.getAccountNumber() != null && !item.getAccountNumber().isBlank())
+                        ? item.getAccountNumber().trim()
+                        : "DGB-000000000";
+                if (accNo.length() > 14) accNo = accNo.substring(0, 14);
 
-                String owner = item.getOwnerName() != null ? item.getOwnerName() : "-";
-                if (owner.length() > 14) owner = owner.substring(0, 11) + "...";
+                String owner = (item.getOwnerName() != null && !item.getOwnerName().isBlank())
+                        ? item.getOwnerName().trim()
+                        : "(Unassigned)";
+                if (owner.length() > 16) owner = owner.substring(0, 13) + "...";
 
                 String type = item.getAccountType() != null ? item.getAccountType().name() : "CHECKING";
                 if (type.length() > 9) type = type.substring(0, 9);
@@ -322,33 +375,45 @@ public class GlobalLedgerScreen implements Screen {
                 if (ccy.length() > 4) ccy = ccy.substring(0, 4);
 
                 BigDecimal bal = item.getBalance() != null ? item.getBalance() : BigDecimal.ZERO;
-                String balStr = formatCurrencyBalance(ccy, bal.doubleValue());
+                String balStr;
+                if ("KHR".equalsIgnoreCase(ccy)) {
+                    balStr = String.format("៛ %11s", khrDf.format(bal));
+                } else {
+                    balStr = String.format("$ %11s", usdDf.format(bal));
+                }
 
                 String risk = item.getRiskLevel() != null ? item.getRiskLevel() : "LOW";
                 if (risk.length() > 6) risk = risk.substring(0, 6);
 
                 String st = item.getStatus() != null ? item.getStatus().name() : "ACTIVE";
-                if (st.length() > 7) st = st.substring(0, 7);
+                if (st.length() > 8) st = st.substring(0, 8);
 
-                String stColor = "ACTIVE".equalsIgnoreCase(st) ? Ansi.green(st) : Ansi.red(st);
-                String riskColor = "HIGH".equalsIgnoreCase(risk) ? Ansi.red(risk)
-                        : "MED".equalsIgnoreCase(risk) ? Ansi.yellow(risk) : risk;
-
-                String plainRow = String.format("%s%-13s  %-14s %-9s %-4s %14s   %-6s %-7s",
+                String plainRow = String.format("%s%-14s %-16s %-9s %-4s %14s %-6s %-8s",
                         prefix, accNo, owner, type, ccy, balStr, risk, st);
-
-                if (plainRow.length() > 78) {
-                    plainRow = plainRow.substring(0, 78);
-                } else {
-                    plainRow = String.format("%-78s", plainRow);
-                }
 
                 if (isSelected) {
                     sb.append(TUIBox.line("\033[7m" + plainRow + "\033[0m", width)).append("\n");
                 } else {
-                    String coloredRow = plainRow;
-                    if (st != null && !st.isEmpty()) coloredRow = coloredRow.replace(st, stColor);
-                    if (risk != null && !risk.isEmpty() && !"LOW".equalsIgnoreCase(risk)) coloredRow = coloredRow.replace(risk, riskColor);
+                    String coloredRiskCell;
+                    String riskPadded = String.format("%-6s", risk);
+                    if ("HIGH".equalsIgnoreCase(risk)) {
+                        coloredRiskCell = "\033[31m" + riskPadded + "\033[0m";
+                    } else if ("MED".equalsIgnoreCase(risk)) {
+                        coloredRiskCell = "\033[33m" + riskPadded + "\033[0m";
+                    } else {
+                        coloredRiskCell = riskPadded;
+                    }
+
+                    String stPadded = String.format("%-8s", st);
+                    String coloredStatusCell;
+                    if ("ACTIVE".equalsIgnoreCase(st)) {
+                        coloredStatusCell = "\033[32m" + stPadded + "\033[0m";
+                    } else {
+                        coloredStatusCell = "\033[31m" + stPadded + "\033[0m";
+                    }
+
+                    String coloredRow = String.format("%s%-14s %-16s %-9s %-4s %14s ",
+                            prefix, accNo, owner, type, ccy, balStr) + coloredRiskCell + " " + coloredStatusCell;
                     sb.append(TUIBox.line(coloredRow, width)).append("\n");
                 }
             }
@@ -363,18 +428,39 @@ public class GlobalLedgerScreen implements Screen {
 
         sb.append(TUIBox.divider(width)).append("\n");
 
-        // Status Line inside box
-        String statusDisplay = isError ? ConsoleTheme.error(statusMessage) : statusMessage;
-        if (TUIBox.visibleLength(statusDisplay) > 70) {
-            statusDisplay = statusDisplay.substring(0, 67) + "...";
-        }
-        sb.append(TUIBox.line("Status: " + statusDisplay, width)).append("\n");
-        sb.append(TUIBox.bottom(width)).append("\n");
+        // Status Line or Search Prompt inside box
+        if (isSearchMode) {
+            String inputDisp = searchBuf + "_";
+            if (inputDisp.length() > 66) inputDisp = inputDisp.substring(0, 66);
+            String searchPrompt = String.format("SEARCH: [ %-66s ]", inputDisp);
+            sb.append(TUIBox.line(searchPrompt, width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
+            sb.append(Ansi.keyGuide("[Enter] Apply Search  •  [Backspace] Delete  •  [Esc] Cancel Search")).append("\n");
+        } else {
+            String statusDisplay = isError ? ConsoleTheme.error(statusMessage) : statusMessage;
+            if (TUIBox.visibleLength(statusDisplay) > 76) {
+                statusDisplay = statusDisplay.substring(0, 73) + "...";
+            }
+            sb.append(TUIBox.line(statusDisplay, width)).append("\n");
+            sb.append(TUIBox.bottom(width)).append("\n");
 
-        // Footer Hint
-        sb.append(Ansi.keyGuide("[↑/↓] Select  •  [1-3/Tab] Switch CCY  •  [Enter] Ledger  •  [/] Find  •  [Esc] Back")).append("\n");
+            if (searchTerm != null && !searchTerm.isBlank()) {
+                sb.append(Ansi.keyGuide("[↑/↓] Select  •  [Enter] Ledger  •  [/] New Search  •  [X] Clear Filter  •  [Esc] Back")).append("\n");
+            } else {
+                sb.append(Ansi.keyGuide("[↑/↓] Select  •  [1-3/Tab] CCY  •  [Enter] Ledger  •  [A] Audit  •  [/] Find  •  [Esc] Back")).append("\n");
+            }
+        }
 
         return sb.toString();
+    }
+
+    public static String renderContent(List<GlobalLedgerItem> items, Map<Currency, BigDecimal> vaultTotals,
+                                       int currentPage, int totalPages, int selectedIndex,
+                                       CurrencyFilter activeCcy, String searchTerm,
+                                       Map<CurrencyFilter, Long> tabCounts,
+                                       String statusMessage, boolean isError, int width) {
+        return renderContent(items, vaultTotals, currentPage, totalPages, selectedIndex,
+                activeCcy, searchTerm, tabCounts, false, "", statusMessage, isError, width);
     }
 
     public static String renderContent(List<GlobalLedgerItem> items, Map<Currency, BigDecimal> vaultTotals,
@@ -383,7 +469,7 @@ public class GlobalLedgerScreen implements Screen {
                                        String statusMessage, boolean isError, int width) {
         CurrencyFilter activeCcy = CurrencyFilter.fromCurrency(filterCurrency);
         return renderContent(items, vaultTotals, currentPage, totalPages, selectedIndex,
-                activeCcy, searchTerm, null, statusMessage, isError, width);
+                activeCcy, searchTerm, null, false, "", statusMessage, isError, width);
     }
 }
 

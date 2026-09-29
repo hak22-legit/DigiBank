@@ -1,6 +1,7 @@
 package com.bank.console;
 
 import com.bank.console.components.*;
+import com.bank.console.screens.GoodbyeScreen;
 import com.bank.console.screens.Screen;
 import com.bank.console.screens.SplashScreen;
 import org.slf4j.Logger;
@@ -51,9 +52,7 @@ public class ConsoleApplication {
         }
 
         // Clean exit
-        session.clearScreen();
-        System.out.println("Thank you for using DigiBank. Goodbye!");
-        session.close();
+        GoodbyeScreen.show(session);
     }
 
     private void handleScreenException(Exception e) {

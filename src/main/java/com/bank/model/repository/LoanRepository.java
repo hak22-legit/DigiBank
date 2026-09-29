@@ -11,6 +11,7 @@ public interface LoanRepository {
     Optional<Loan> findById(Long loanId);
     List<Loan> findByUserId(Long userId);
     List<Loan> findByStatus(String status);
+    List<Loan> findPendingLoans();
     List<Loan> findByUserIdAndStatus(Long userId, String status);
     Optional<Loan> findActiveLoanByUserId(Long userId);
     List<Loan> findAll();

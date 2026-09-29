@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.time.LocalDateTime;
 import java.util.*;
 import com.bank.model.enums.Currency;
 
@@ -720,7 +721,7 @@ public class ScreenVisualVerificationTest {
         String otpField = String.format("  Enter 6-Digit OTP    : [ %-46s ]", "849201");
         assertEquals(82, TUIBox.visibleLength(TUIBox.line(otpField, width)));
         assertEquals(82, TUIBox.visibleLength(TUIBox.line("ATTEMPTS REMAINING: 3 / 3", width)));
-        assertEquals(82, TUIBox.visibleLength(TUIBox.line("  ▸ [1] Verify & Proceed    [2] Resend OTP (Wait 60s)    [3] Abort Recovery", width)));
+        assertEquals(82, TUIBox.visibleLength(TUIBox.line(" ▸ [1] Verify & Proceed      [2] Resend (60s)      [3] Abort Recovery", width)));
         assertEquals(82, TUIBox.visibleLength(TUIBox.bottom(width)));
 
         // Step 3: Reset Credentials
@@ -1108,6 +1109,45 @@ public class ScreenVisualVerificationTest {
     }
 
     @Test
+    @DisplayName("Verify UserProfileModal with Security Dispatch token conforms strictly to 82 columns without overflow")
+    void testUserProfileDossierSecurityDispatchLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        UserProfileDossier dossier = UserProfileDossier.builder()
+                .userId(6L)
+                .username("chhun")
+                .fullName("Chhun Hokchheng")
+                .email("chheng12@gmail.com")
+                .phone("0962599897")
+                .status(UserStatus.ACTIVE)
+                .registrationDate(java.time.LocalDate.of(2026, 9, 15))
+                .kycVerificationLevel("LEVEL_2 (FULL)")
+                .failedLoginAttempts(0)
+                .build();
+
+        String statusMsg = "One-time reset token generated and logged to audit trail.";
+        String rendered = UserProfileModal.renderContent(dossier, "371480", statusMsg, false, width);
+        String[] lines = rendered.split("\n");
+
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "Line " + i + " must be strictly 82 cols: " + lines[i]);
+        }
+        assertTrue(TUIBox.visibleLength(lines[lines.length - 1]) <= 82, "Footer must be <= 82 cols");
+
+        String stripped = TUIBox.stripAnsi(rendered);
+        assertTrue(stripped.contains("CUSTOMER IDENTITY DOSSIER"));
+        assertTrue(stripped.contains("SECURITY DISPATCH • ONE-TIME RECOVERY TOKEN ISSUED"));
+        assertTrue(stripped.contains("Security Token : [ 371480 ]  (Simulated Dispatch Mode)"));
+        assertTrue(stripped.contains("Target Email   : chheng12@gmail.com"));
+        assertTrue(stripped.contains("Time-To-Live   : 180 Seconds (3 Minutes)"));
+        assertTrue(stripped.contains("Audit Ref      : #RST-"));
+        assertTrue(stripped.contains("[Enter] Acknowledge & Dismiss"));
+        assertTrue(stripped.contains("[F] Toggle Freeze"));
+        assertTrue(stripped.contains("[Esc] Back"));
+    }
+
+    @Test
     @DisplayName("Verify GlobalLedgerScreen conforms strictly to 82 columns")
     void testGlobalLedgerScreenLayout() {
         int width = TUILayout.APP_WIDTH;
@@ -1125,8 +1165,8 @@ public class ScreenVisualVerificationTest {
             assertEquals(82, TUIBox.visibleLength(lines[i]), "GlobalLedger line " + i + " must be 82 cols: " + lines[i]);
         }
         assertTrue(rendered.contains("TOTAL VAULT ASSETS :"));
-        assertTrue(rendered.contains("CCY:"));
-        assertTrue(rendered.contains("[1-3/Tab] Switch CCY"));
+        assertTrue(rendered.contains("CCY VIEW:"));
+        assertTrue(rendered.contains("[1-3/Tab] CCY"));
     }
 
     @Test
@@ -1181,9 +1221,9 @@ public class ScreenVisualVerificationTest {
         }
         assertTrue(rendered.contains("FORENSIC AUDIT TRAIL"));
         assertTrue(rendered.contains("PERIOD:"));
-        assertTrue(rendered.contains("[1-4] Period"));
-        assertTrue(rendered.contains("[Enter] Inspect"));
-        assertTrue(rendered.contains("[C] Custom"));
+        assertTrue(rendered.contains("[1-4] Filter"));
+        assertTrue(rendered.contains("[Enter] View"));
+        assertTrue(rendered.contains("[C] Date"));
     }
 
     @Test
@@ -1362,5 +1402,318 @@ public class ScreenVisualVerificationTest {
         assertTrue(rendered.contains("[1] Return to Main Staff Console"));
         assertTrue(rendered.contains("Clearance denied. Press [Enter] or [Esc] to return to previous menu."));
     }
+
+    @Test
+    @DisplayName("Verify StaffManagementScreen correctly formats LOAN_OFFICER, widens MFA column, and avoids color leak")
+    void testStaffManagementScreenLoanOfficerColorLeakAndMfaWidth() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        List<Admin> staffList = List.of(
+                Admin.builder().adminId(1L).username("superadmin").role(AdminRole.SUPER_ADMIN).status(AdminStatus.ACTIVE).build(),
+                Admin.builder().adminId(2L).username("compliance1").role(AdminRole.COMPLIANCE_OFFICER).status(AdminStatus.ACTIVE).build(),
+                Admin.builder().adminId(3L).username("loan1").role(AdminRole.LOAN_OFFICER).status(AdminStatus.ACTIVE).build(),
+                Admin.builder().adminId(4L).username("loan2").role(AdminRole.LOAN_OFFICER).status(AdminStatus.INACTIVE).build()
+        );
+
+        String rendered = StaffManagementScreen.renderContent(staffList, 0, "Staff directory synchronized.", false, width);
+        String[] lines = rendered.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "StaffManagement line " + i + " must be 82 cols: " + lines[i]);
+        }
+
+        // Verify no ANSI corruption in LOAN_OFFICER
+        assertFalse(rendered.contains("LOAN_\033[31mOFF"), "LOAN_OFFICER role must not have OFF colored red");
+        assertTrue(rendered.contains("LOAN_OFFICER"));
+
+        // Verify streamlined MFA badges
+        assertTrue(rendered.contains("ENABLED [✓]"));
+        assertTrue(rendered.contains("DISABLED"));
+
+        // Verify colors
+        assertTrue(rendered.contains("\033[32mACTIVE"));
+        assertTrue(rendered.contains("\033[31mINACTIVE"));
+    }
+
+    @Test
+    @DisplayName("Verify LoanUnderwritingScreen rejected state collapses parameters and syncs header status")
+    void testLoanUnderwritingScreenRejectedStateLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        Loan rejectedLoan = Loan.builder()
+                .loanId(10L)
+                .userId(3L)
+                .requestedAmount(new BigDecimal("5000.00"))
+                .termMonths(60)
+                .monthlyIncome(new BigDecimal("500.00"))
+                .creditScore(300)
+                .existingDebt(new BigDecimal("5000.00"))
+                .interestRate(new BigDecimal("9.50"))
+                .status(LoanStatus.REJECTED)
+                .rejectionReason("Credit criteria not met (Score < 600, DTI > 40%)")
+                .approvedBy(1L)
+                .approvedAt(LocalDateTime.of(2026, 9, 21, 22, 4, 59))
+                .build();
+
+        UserProfileDossier dossier = UserProfileDossier.builder().userId(3L).fullName("Men Senghak").build();
+
+        String rendered = LoanUnderwritingScreen.renderContent("SUPER ADMIN", rejectedLoan, dossier, null,
+                1, 6, new BigDecimal("5000.00"), new BigDecimal("9.50"), 0,
+                "Application #010 rejected. Record archived to underwriting history.", false, width);
+
+        String[] lines = rendered.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "LoanUnderwriting rejected line " + i + " must be 82 cols: " + lines[i]);
+        }
+
+        // Header status badge
+        assertTrue(rendered.contains("\033[31mSTATUS: REJECTED\033[0m"), "Header badge must be STATUS: REJECTED in red");
+        assertTrue(rendered.contains("UNDERWRITING QUEUE: Application 2 of 6"));
+
+        // Collapsed decision parameters replaced by FINAL UNDERWRITING DECISION
+        assertTrue(rendered.contains("FINAL UNDERWRITING DECISION"));
+        assertFalse(rendered.contains("UNDERWRITING DECISION PARAMETERS"));
+        assertFalse(rendered.contains("Approved Principal"));
+        assertFalse(rendered.contains("Disbursement Target"));
+
+        // Decision details
+        assertTrue(rendered.contains("REJECTED (ADVERSE ACTION)"));
+        assertTrue(rendered.contains("Credit criteria not met (Score < 600, DTI > 40%)"));
+        assertTrue(rendered.contains("#ADM-01 (SUPER_ADMIN) at 2026-09-21 22:04:59"));
+
+        // Contextual footer hints
+        assertTrue(rendered.contains("[N] Next Application  •  [P] Previous  •  [Esc] Back to Queue"));
+        assertFalse(rendered.contains("[A] Approve & Disburse"));
+    }
+
+    @Test
+    @DisplayName("Verify AccountStatementLedgerScreen conforms strictly to 82 columns")
+    void testAccountStatementLedgerScreenLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        GlobalLedgerItem account = GlobalLedgerItem.builder()
+                .accountId(42L)
+                .accountNumber("DGB-921915333")
+                .ownerName("John Doe")
+                .currency(Currency.USD)
+                .balance(new BigDecimal("930.00"))
+                .accountType(AccountType.CHECKING)
+                .status(AccountStatus.ACTIVE)
+                .build();
+
+        List<Transaction> txns = List.of(
+                Transaction.builder()
+                        .transactionId(9401L)
+                        .accountId(42L)
+                        .transactionType(TransactionType.DEPOSIT)
+                        .description("Initial Funding")
+                        .amount(new BigDecimal("1000.00"))
+                        .transactionDate(LocalDateTime.of(2026, 9, 21, 21, 30))
+                        .build(),
+                Transaction.builder()
+                        .transactionId(9402L)
+                        .accountId(42L)
+                        .transactionType(TransactionType.PAYMENT)
+                        .description("Entertainment")
+                        .amount(new BigDecimal("70.00"))
+                        .transactionDate(LocalDateTime.of(2026, 9, 21, 22, 15))
+                        .build()
+        );
+
+        String rendered = AccountStatementLedgerScreen.renderContent(account, txns, 0, 0, 6,
+                "Showing transaction history for account DGB-921915333.", false, width);
+
+        String[] lines = rendered.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "AccountStatementLedger line " + i + " must be 82 cols: " + lines[i]);
+        }
+
+        assertTrue(rendered.contains("ACCOUNT STATEMENT LEDGER"));
+        assertTrue(rendered.contains("ACCOUNT: DGB-921915333 (John Doe)"));
+        assertTrue(rendered.contains("CCY: USD"));
+        assertTrue(rendered.contains("BALANCE: $ 930.00"));
+        assertTrue(rendered.contains("#TX-9401"));
+        assertTrue(rendered.contains("#TX-9402"));
+        assertTrue(rendered.contains("[↑/↓] Scroll  •  [F] Filter  •  [P] Print Statement  •  [Esc] Back to Monitor"));
+    }
+
+    @Test
+    @DisplayName("Verify AuditLogScreen records REJECT_LOAN result as SUCCESS in green")
+    void testAuditLogScreenRejectLoanStatusSuccess() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        List<AuditLog> logs = List.of(
+                AuditLog.builder()
+                        .logId(101L)
+                        .adminId(1L)
+                        .action("REJECT_LOAN")
+                        .targetTable("loans")
+                        .targetId(10L)
+                        .details("Rejected loan: Credit criteria not met")
+                        .createdAt(LocalDateTime.of(2026, 9, 21, 22, 4))
+                        .build()
+        );
+
+        String rendered = AuditLogScreen.renderContent(logs, 1, 1, -1,
+                AuditLogScreen.DateFilterPreset.ALL, null, null, null,
+                "Audit stream ready.", false, width);
+
+        String[] lines = rendered.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "AuditLog line " + i + " must be 82 cols: " + lines[i]);
+        }
+
+        assertTrue(rendered.contains("\033[32mSUCCESS\033[0m"), "REJECT_LOAN action must have SUCCESS result styled in green");
+        assertFalse(rendered.contains("\033[31mFAILED\033[0m"), "REJECT_LOAN action must not have FAILED result");
+    }
+
+    @Test
+    @DisplayName("Verify CustomerDashboardScreen displays loan rejection alert announcement and conforms strictly to 82 columns")
+    void testCustomerDashboardLoanRejectionAlertLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        UserDTO user = UserDTO.builder()
+                .userId(3L)
+                .username("senghak")
+                .fullName("Men Senghak")
+                .status(UserStatus.ACTIVE)
+                .build();
+
+        AccountDTO account = AccountDTO.builder()
+                .accountId(42L)
+                .accountNumber("DGB-921915333")
+                .accountType(AccountType.CHECKING)
+                .currency(Currency.USD)
+                .balance(new BigDecimal("1250.00"))
+                .status(AccountStatus.ACTIVE)
+                .build();
+
+        Notification rejectionAlert = Notification.builder()
+                .notificationId(501L)
+                .userId(3L)
+                .title("Loan Application Update")
+                .message("Your loan request #010 was rejected due to credit criteria.")
+                .type("LOAN_REJECTED")
+                .isRead(false)
+                .createdAt(LocalDateTime.of(2026, 9, 21, 22, 5))
+                .build();
+
+        CustomerDashboardScreen.DashboardData data = new CustomerDashboardScreen.DashboardData(
+                List.of(account),
+                "0 Loans ($0.00 Outstanding)",
+                "0 Goals ($0.00 / $0.00 Target)",
+                "$0.00 spent of $200.00 limit",
+                rejectionAlert
+        );
+
+        String rendered = CustomerDashboardScreen.renderContent(user, data, 0, false, 0, null, width);
+
+        String[] lines = rendered.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "CustomerDashboard line " + i + " must be 82 cols: " + lines[i]);
+        }
+
+        assertTrue(rendered.contains("ALERT:"));
+        assertTrue(rendered.contains("Loan Application Update"));
+        assertTrue(rendered.contains("Your loan request #010 was rejected due to credit criteria."));
+        assertTrue(rendered.contains("Status: Alert: Your loan request #010 was rejected due to credit criteria."));
+    }
+
+    @Test
+    @DisplayName("Verify StaffManagementScreen reset password modal conforms strictly to 82 columns")
+    void testStaffResetPasswordModalLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        Admin admin = Admin.builder()
+                .adminId(3L)
+                .username("sarah.admin")
+                .fullName("Sarah Admin")
+                .role(AdminRole.LOAN_OFFICER)
+                .status(AdminStatus.ACTIVE)
+                .build();
+
+        String rendered = StaffManagementScreen.renderResetPasswordContent(
+                admin, "Dgb#8491@Secure!", true, 0, "Ready to provision credential.", false, width
+        );
+        String[] lines = rendered.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "Reset modal line " + i + " must be 82 cols: " + lines[i]);
+        }
+        assertTrue(rendered.contains("PROVISION TEMPORARY CREDENTIAL"));
+        assertTrue(rendered.contains("Dgb#8491@Secure!"));
+        assertTrue(rendered.contains("[1] Save & Apply Password"));
+        assertTrue(rendered.contains("[2] Regenerate Key"));
+    }
+
+    @Test
+    @DisplayName("Verify StaffManagementScreen reset success modal conforms strictly to 82 columns")
+    void testStaffResetSuccessModalLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        Admin admin = Admin.builder()
+                .adminId(3L)
+                .username("sarah.admin")
+                .fullName("Sarah Admin")
+                .role(AdminRole.LOAN_OFFICER)
+                .status(AdminStatus.ACTIVE)
+                .build();
+
+        String rendered = StaffManagementScreen.renderResetSuccessContent(
+                admin, "Dgb#8491@Secure!", "Password updated in PostgreSQL. Audit trail record logged.", width
+        );
+        String[] lines = rendered.split("\n");
+        for (int i = 0; i < lines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(lines[i]), "Reset success line " + i + " must be 82 cols: " + lines[i]);
+        }
+        assertTrue(rendered.contains("CREDENTIAL COMMITTED SUCCESSFULLY"));
+        assertTrue(rendered.contains("Dgb#8491@Secure!"));
+        assertTrue(rendered.contains("FORCED_PASSWORD_CHANGE_REQUIRED"));
+    }
+
+    @Test
+    @DisplayName("Verify GlobalLedgerScreen search mode and search filter badge conform strictly to 82 columns")
+    void testGlobalLedgerSearchModeLayout() {
+        int width = TUILayout.APP_WIDTH;
+        assertEquals(82, width);
+
+        List<GlobalLedgerItem> items = List.of(
+                GlobalLedgerItem.builder().accountId(1L).accountNumber("ACC-88421094").ownerName("Sophea Chan").accountType(AccountType.CHECKING).currency(Currency.USD).balance(new BigDecimal("12450.00")).riskLevel("LOW").status(AccountStatus.ACTIVE).build()
+        );
+        Map<Currency, BigDecimal> totals = Map.of(Currency.USD, new BigDecimal("412850.00"), Currency.KHR, new BigDecimal("45200000"));
+
+        // 1. In search mode (typing query)
+        String searchModeRendered = GlobalLedgerScreen.renderContent(
+                items, totals, 1, 1, 0,
+                GlobalLedgerScreen.CurrencyFilter.ALL, null, null,
+                true, "Sophea", "Type query and press [Enter] to filter", false, width
+        );
+        String[] sLines = searchModeRendered.split("\n");
+        for (int i = 0; i < sLines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(sLines[i]), "Search mode line " + i + " must be 82 cols: " + sLines[i]);
+        }
+        assertTrue(searchModeRendered.contains("SEARCH: ["));
+        assertTrue(searchModeRendered.contains("Sophea"));
+
+        // 2. Search applied (filtered view)
+        String filteredRendered = GlobalLedgerScreen.renderContent(
+                items, totals, 1, 1, 0,
+                GlobalLedgerScreen.CurrencyFilter.ALL, "SOPHEA", null,
+                false, "", "Found 1 accounts matching \"SOPHEA\". Press [X] to clear search.", false, width
+        );
+        String[] fLines = filteredRendered.split("\n");
+        for (int i = 0; i < fLines.length - 1; i++) {
+            assertEquals(82, TUIBox.visibleLength(fLines[i]), "Filtered line " + i + " must be 82 cols: " + fLines[i]);
+        }
+        assertTrue(filteredRendered.contains("FILTER: \"SOPHEA\""));
+        assertTrue(filteredRendered.contains("[X] Clear Filter"));
+    }
 }
+
+
 

@@ -154,9 +154,7 @@ public class WelcomeScreen implements Screen {
             case 0 -> navigator.push(new LoginScreen());
             case 1 -> navigator.push(new RegisterScreen());
             case 2 -> {
-                session.clearScreen();
-                System.out.println(ConsoleTheme.muted("Thank you for choosing DigiBank. Goodbye!"));
-                System.exit(0);
+                GoodbyeScreen.show(session);
             }
         }
     }

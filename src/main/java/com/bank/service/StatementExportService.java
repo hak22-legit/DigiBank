@@ -73,6 +73,21 @@ public class StatementExportService {
     }
 
     /**
+     * Generates a single transaction receipt voucher PDF and returns the File.
+     */
+    public File generateTransactionReceiptPdf(Transaction transaction, AccountDTO account, User user) {
+        return new PdfStatementService().generateTransactionReceiptPdf(transaction, account, user);
+    }
+
+    public File generateTransactionReceiptPdf(Transaction transaction, com.bank.model.entity.Account account, User user) {
+        return new PdfStatementService().generateTransactionReceiptPdf(transaction, account, user);
+    }
+
+    public String generateReceipt(Transaction transaction, AccountDTO account, User user) {
+        return new PdfStatementService().generateReceipt(transaction, account, user);
+    }
+
+    /**
      * Generates and returns the raw PDF bytes for a populated StatementReportData.
      */
     public byte[] generateStatementPdfBytes(StatementReportData data) {

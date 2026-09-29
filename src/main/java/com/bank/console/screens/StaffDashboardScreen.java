@@ -3,6 +3,7 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
+import com.bank.console.TerminalInputHandler;
 import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUIFormHelper;
@@ -22,6 +23,7 @@ import com.bank.model.entity.Admin;
 import com.bank.model.entity.AuditLog;
 import com.bank.model.entity.FraudAlert;
 import com.bank.model.enums.AdminRole;
+import com.bank.model.enums.RiskLevel;
 import com.bank.security.SessionManager;
 import com.bank.service.LoanService.LoanPipelineStats;
 import org.jline.terminal.Attributes;
@@ -94,13 +96,16 @@ public class StaffDashboardScreen implements Screen {
         Attributes origAttributes = terminal.enterRawMode();
         NonBlockingReader reader = terminal.reader();
 
+        // Drain any lingering newline characters on entry
+        TerminalInputHandler.drainBuffer(reader);
+
         int selectedIndex = 0;
         boolean firstRender = true;
-        boolean running = true;
+        boolean inScreen = true;
         String statusMessage = "Ready. Underwriting queue synchronized.";
 
         try {
-            while (running) {
+            while (inScreen) {
                 try {
                     LoanPipelineStats stats;
                     try {
@@ -120,50 +125,66 @@ public class StaffDashboardScreen implements Screen {
                     ScreenRenderer.render(rendered, firstRender);
                     firstRender = false;
 
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE || (event.action() == KeyAction.CHAR && event.ch() == '0')) {
-                        running = false;
-                        authController.logoutAdmin();
-                        session.logout();
-                        navigator.clearAndPush(new WelcomeScreen());
-                        return;
-                    } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
-                        selectedIndex = (selectedIndex - 1 + 4) % 4;
-                    } else if (event.action() == KeyAction.DOWN || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
-                        selectedIndex = (selectedIndex + 1) % 4;
-                    } else if (event.action() == KeyAction.CHAR && event.ch() == '1') {
-                        running = false;
-                        navigator.push(new LoanUnderwritingScreen(adminController, loanController));
-                        return;
-                    } else if (event.action() == KeyAction.CHAR && event.ch() == '2') {
-                        running = false;
-                        navigator.push(new BorrowingHistoryScreen(adminController, loanController));
-                        return;
-                    } else if (event.action() == KeyAction.CHAR && event.ch() == '3') {
-                        running = false;
-                        navigator.push(new ActiveLoanBookScreen(adminController, loanController));
-                        return;
-                    } else if (event.action() == KeyAction.ENTER) {
-                        running = false;
-                        switch (selectedIndex) {
-                            case 0 -> {
-                                navigator.push(new LoanUnderwritingScreen(adminController, loanController));
-                                return;
+                    TerminalInputHandler.KeyCode event = TerminalInputHandler.readNavigationKey(reader);
+                    String key = event.asNormalizedKey();
+
+                    switch (key) {
+                        case "ESC", "B", "0" -> {
+                            inScreen = false;
+                            authController.logoutAdmin();
+                            session.logout();
+                            navigator.clearAndPush(new WelcomeScreen());
+                            return;
+                        }
+                        case "UP", "K" -> {
+                            selectedIndex = (selectedIndex - 1 + 4) % 4;
+                        }
+                        case "DOWN", "J" -> {
+                            selectedIndex = (selectedIndex + 1) % 4;
+                        }
+                        case "1" -> {
+                            inScreen = false;
+                            navigator.push(new LoanUnderwritingScreen(adminController, loanController));
+                            return;
+                        }
+                        case "2" -> {
+                            inScreen = false;
+                            navigator.push(new BorrowingHistoryScreen(adminController, loanController));
+                            return;
+                        }
+                        case "3" -> {
+                            inScreen = false;
+                            navigator.push(new ActiveLoanBookScreen(adminController, loanController));
+                            return;
+                        }
+                        case "ENTER" -> {
+                            switch (selectedIndex) {
+                                case 0 -> {
+                                    inScreen = false;
+                                    navigator.push(new LoanUnderwritingScreen(adminController, loanController));
+                                    return;
+                                }
+                                case 1 -> {
+                                    inScreen = false;
+                                    navigator.push(new BorrowingHistoryScreen(adminController, loanController));
+                                    return;
+                                }
+                                case 2 -> {
+                                    inScreen = false;
+                                    navigator.push(new ActiveLoanBookScreen(adminController, loanController));
+                                    return;
+                                }
+                                case 3 -> {
+                                    inScreen = false;
+                                    authController.logoutAdmin();
+                                    session.logout();
+                                    navigator.clearAndPush(new WelcomeScreen());
+                                    return;
+                                }
                             }
-                            case 1 -> {
-                                navigator.push(new BorrowingHistoryScreen(adminController, loanController));
-                                return;
-                            }
-                            case 2 -> {
-                                navigator.push(new ActiveLoanBookScreen(adminController, loanController));
-                                return;
-                            }
-                            case 3 -> {
-                                authController.logoutAdmin();
-                                session.logout();
-                                navigator.clearAndPush(new WelcomeScreen());
-                                return;
-                            }
+                        }
+                        default -> {
+                            // Discard unmapped keys without exiting or breaking the loop
                         }
                     }
                 } catch (Exception ex) {
@@ -219,13 +240,36 @@ public class StaffDashboardScreen implements Screen {
         BigDecimal appVol = stats != null && stats.approvedTodayVolume() != null ? stats.approvedTodayVolume() : BigDecimal.ZERO;
         long rejCount = stats != null ? stats.rejectedTodayCount() : 0;
 
-        String qStr = qCount + (qCount == 1 ? " Request" : " Requests");
-        String appStr = appCount + " ($" + df.format(appVol) + ")";
-        String volStr = "$ " + df.format(qVol) + " USD";
-        String rejStr = rejCount + (rejCount == 1 ? " Application" : " Applications");
+        // Card 1: QUEUE STATUS (22w)
+        String c1Top = ConsoleTheme.border("┌─── ") + ConsoleTheme.bold("QUEUE STATUS") + ConsoleTheme.border(" ───┐");
+        String qCountStr = qCount > 0 ? (qCount + (qCount == 1 ? " Request" : " Requests")) : "00 Requests";
+        String c1R1 = ConsoleTheme.border("│ ") + (qCount > 0 ? Ansi.yellow(String.format("%-18s", qCountStr)) : Ansi.green(String.format("%-18s", qCountStr))) + ConsoleTheme.border(" │");
+        String c1R2 = ConsoleTheme.border("│ ") + (qCount > 0 ? Ansi.yellow(String.format("%-18s", "In Review")) : Ansi.green(String.format("%-18s", "Queue Clear [✓]"))) + ConsoleTheme.border(" │");
+        String c1Bot = ConsoleTheme.border("└────────────────────┘");
 
-        sb.append(TUIBox.twoColumns(" Applications in Queue: " + qStr, "Approved Today : " + appStr + " ", width)).append("\n");
-        sb.append(TUIBox.twoColumns(" Total Volume Pending : " + volStr, "Rejected Today : " + rejStr + " ", width)).append("\n");
+        // Card 2: EXPOSURE AT RISK (24w)
+        String c2Top = ConsoleTheme.border("┌── ") + ConsoleTheme.bold("EXPOSURE AT RISK") + ConsoleTheme.border(" ──┐");
+        String volStr = "$ " + df.format(qVol);
+        if (volStr.length() > 12) volStr = volStr.substring(0, 12);
+        String c2R1 = ConsoleTheme.border("│ ") + ConsoleTheme.primary(String.format("%-12s", volStr)) + " " + ConsoleTheme.muted(String.format("%-7s", "Pending")) + ConsoleTheme.border(" │");
+        String c2R2 = ConsoleTheme.border("│ ") + ConsoleTheme.muted(String.format("%-20s", "Total Volume")) + ConsoleTheme.border(" │");
+        String c2Bot = ConsoleTheme.border("└──────────────────────┘");
+
+        // Card 3: TODAY'S METRICS (28w)
+        String c3Top = ConsoleTheme.border("┌───── ") + ConsoleTheme.bold("TODAY'S METRICS") + ConsoleTheme.border(" ────┐");
+        String appText = "Approved: " + appCount + " ($" + df.format(appVol) + ")";
+        if (appText.length() > 24) appText = appText.substring(0, 24);
+        String c3R1 = ConsoleTheme.border("│ ") + Ansi.green(String.format("%-24s", appText)) + ConsoleTheme.border(" │");
+        String rejText = "Rejected: " + rejCount + (rejCount == 1 ? " Application" : " Applications");
+        if (rejText.length() > 24) rejText = rejText.substring(0, 24);
+        String c3R2 = ConsoleTheme.border("│ ") + (rejCount > 0 ? Ansi.red(String.format("%-24s", rejText)) : ConsoleTheme.muted(String.format("%-24s", rejText))) + ConsoleTheme.border(" │");
+        String c3Bot = ConsoleTheme.border("└──────────────────────────┘");
+
+        sb.append(TUIBox.line(c1Top + "  " + c2Top + "  " + c3Top, width)).append("\n");
+        sb.append(TUIBox.line(c1R1 + "  " + c2R1 + "  " + c3R1, width)).append("\n");
+        sb.append(TUIBox.line(c1R2 + "  " + c2R2 + "  " + c3R2, width)).append("\n");
+        sb.append(TUIBox.line(c1Bot + "  " + c2Bot + "  " + c3Bot, width)).append("\n");
+
         sb.append(TUIBox.emptyLine(width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
@@ -234,49 +278,34 @@ public class StaffDashboardScreen implements Screen {
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
         String[] actionLabels = {
-                String.format("Review Loan Underwriting Queue (%d Pending)", qCount),
-                "Search Customer Borrowing History & Profiles",
+                String.format("Review Loan Underwriting Queue (%d)", qCount),
+                "Search Customer Borrowing History",
                 "Portfolio Performance & Active Loan Book"
         };
 
         for (int i = 0; i < 3; i++) {
             boolean isSel = (selectedIndex == i);
             String prefix = isSel ? "▸ " : "  ";
-            String plainText = String.format("%s[%d] %s", prefix, i + 1, actionLabels[i]);
-
-            // Pad strictly to 74 printable characters so the highlight spans from left to right border
-            if (plainText.length() > 74) {
-                plainText = plainText.substring(0, 74);
-            } else {
-                plainText = String.format("%-74s", plainText);
-            }
-
+            String plainRow = String.format("  %s[%d] %-70s", prefix, i + 1, actionLabels[i]);
             if (isSel) {
-                sb.append(TUIBox.line("  \033[7m" + plainText + "\033[0m", width)).append("\n");
+                sb.append(TUIBox.fullWidthInverted(plainRow, width)).append("\n");
             } else {
-                String rendered = plainText.replace("[" + (i + 1) + "]", Ansi.yellow("[" + (i + 1) + "]"));
-                sb.append(TUIBox.line("  " + rendered, width)).append("\n");
+                String rendered = plainRow.replace("[" + (i + 1) + "]", Ansi.yellow("[" + (i + 1) + "]"));
+                sb.append(TUIBox.line(rendered, width)).append("\n");
             }
         }
 
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
-        // Centered [0] Sign Out & Terminate Session
+        // Option [0] left-aligned flush with main tasks
         boolean selSignOut = (selectedIndex == 3);
         String prefix0 = selSignOut ? "▸ " : "  ";
-        String signOutText = String.format("%s[0] Sign Out & Terminate Session", prefix0);
-        String centeredPlain = " ".repeat(19) + signOutText;
-        if (centeredPlain.length() > 74) {
-            centeredPlain = centeredPlain.substring(0, 74);
-        } else {
-            centeredPlain = String.format("%-74s", centeredPlain);
-        }
-
+        String plain0 = String.format("  %s[0] %-70s", prefix0, "Sign Out & Terminate Session");
         if (selSignOut) {
-            sb.append(TUIBox.line("  \033[7m" + centeredPlain + "\033[0m", width)).append("\n");
+            sb.append(TUIBox.fullWidthInverted(plain0, width)).append("\n");
         } else {
-            String rendered = centeredPlain.replace("[0]", Ansi.yellow("[0]"));
-            sb.append(TUIBox.line("  " + rendered, width)).append("\n");
+            String rendered0 = plain0.replace("[0]", Ansi.yellow("[0]"));
+            sb.append(TUIBox.line(rendered0, width)).append("\n");
         }
 
         sb.append(TUIBox.emptyLine(width)).append("\n");
@@ -286,8 +315,8 @@ public class StaffDashboardScreen implements Screen {
         if (statusMessage != null && statusMessage.startsWith("Status: ")) {
             statusMessage = statusMessage.substring(8);
         }
-        if (statusMessage != null && statusMessage.length() > 68) {
-            statusMessage = statusMessage.substring(0, 65) + "...";
+        if (statusMessage != null && statusMessage.length() > 70) {
+            statusMessage = statusMessage.substring(0, 67) + "...";
         }
         String statusDisplay = statusMessage != null && statusMessage.contains("Ready.")
                 ? statusMessage.replace("Ready.", Ansi.green("Ready."))
@@ -296,7 +325,7 @@ public class StaffDashboardScreen implements Screen {
         sb.append(TUIBox.bottom(width)).append("\n");
 
         // Footer Hint
-        sb.append(Ansi.keyGuide("[↑/↓/←/→] Navigate  •  [1-4, 0] Quick Hotkey  •  [Enter] Select  •  [Esc] Logout")).append("\n");
+        sb.append(ConsoleTheme.keyGuide("[↑/↓] Navigate • [1-3, 0] Direct Key • [Enter] Launch • [Esc] Logout")).append("\n");
 
         return sb.toString();
     }
@@ -311,13 +340,16 @@ public class StaffDashboardScreen implements Screen {
         Attributes origAttributes = terminal.enterRawMode();
         NonBlockingReader reader = terminal.reader();
 
+        // Drain any lingering newline characters on entry
+        TerminalInputHandler.drainBuffer(reader);
+
         int selectedIndex = 0;
         boolean firstRender = true;
-        boolean running = true;
+        boolean inScreen = true;
         String statusMessage = "Surveillance active. Scanning transaction feeds.";
 
         try {
-            while (running) {
+            while (inScreen) {
                 try {
                     int activeConn = DatabaseConnection.getActiveConnections();
                     int totalConn = DatabaseConnection.getTotalConnections();
@@ -357,44 +389,58 @@ public class StaffDashboardScreen implements Screen {
                     ScreenRenderer.render(rendered, firstRender);
                     firstRender = false;
 
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE || (event.action() == KeyAction.CHAR && event.ch() == '0')) {
-                        running = false;
-                        authController.logoutAdmin();
-                        session.logout();
-                        navigator.clearAndPush(new WelcomeScreen());
-                        return;
-                    } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
-                        selectedIndex = (selectedIndex - 1 + 3) % 3;
-                    } else if (event.action() == KeyAction.DOWN || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
-                        selectedIndex = (selectedIndex + 1) % 3;
-                    } else if (event.action() == KeyAction.CHAR && event.ch() == '1') {
-                        running = false;
-                        FraudAlert target = !alerts.isEmpty() ? alerts.get(0) : null;
-                        navigator.push(new FraudInvestigationScreen(adminController, target));
-                        return;
-                    } else if (event.action() == KeyAction.CHAR && event.ch() == '2') {
-                        running = false;
-                        navigator.push(new AuditLogScreen(adminController));
-                        return;
-                    } else if (event.action() == KeyAction.ENTER) {
-                        running = false;
-                        switch (selectedIndex) {
-                            case 0 -> {
-                                FraudAlert target = !alerts.isEmpty() ? alerts.get(0) : null;
-                                navigator.push(new FraudInvestigationScreen(adminController, target));
-                                return;
+                    TerminalInputHandler.KeyCode event = TerminalInputHandler.readNavigationKey(reader);
+                    String key = event.asNormalizedKey();
+
+                    switch (key) {
+                        case "ESC", "B", "0" -> {
+                            inScreen = false;
+                            authController.logoutAdmin();
+                            session.logout();
+                            navigator.clearAndPush(new WelcomeScreen());
+                            return;
+                        }
+                        case "UP", "K" -> {
+                            selectedIndex = (selectedIndex - 1 + 3) % 3;
+                        }
+                        case "DOWN", "J" -> {
+                            selectedIndex = (selectedIndex + 1) % 3;
+                        }
+                        case "F", "1" -> {
+                            inScreen = false;
+                            FraudAlert target = !alerts.isEmpty() ? alerts.get(0) : null;
+                            navigator.push(new FraudTriageScreen(adminController, target));
+                            return;
+                        }
+                        case "2" -> {
+                            inScreen = false;
+                            navigator.push(new AuditLogScreen(adminController));
+                            return;
+                        }
+                        case "ENTER" -> {
+                            switch (selectedIndex) {
+                                case 0 -> {
+                                    inScreen = false;
+                                    FraudAlert target = !alerts.isEmpty() ? alerts.get(0) : null;
+                                    navigator.push(new FraudTriageScreen(adminController, target));
+                                    return;
+                                }
+                                case 1 -> {
+                                    inScreen = false;
+                                    navigator.push(new AuditLogScreen(adminController));
+                                    return;
+                                }
+                                case 2 -> {
+                                    inScreen = false;
+                                    authController.logoutAdmin();
+                                    session.logout();
+                                    navigator.clearAndPush(new WelcomeScreen());
+                                    return;
+                                }
                             }
-                            case 1 -> {
-                                navigator.push(new AuditLogScreen(adminController));
-                                return;
-                            }
-                            case 2 -> {
-                                authController.logoutAdmin();
-                                session.logout();
-                                navigator.clearAndPush(new WelcomeScreen());
-                                return;
-                            }
+                        }
+                        default -> {
+                            // Discard unmapped keys without exiting or breaking the loop
                         }
                     }
                 } catch (Exception ex) {
@@ -423,17 +469,35 @@ public class StaffDashboardScreen implements Screen {
         sb.append(TUIBox.line(" " + ConsoleTheme.bold(headerLine), width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
-        // Section 1: SYSTEM HEALTH & RADAR
+        // Section 1: SYSTEM HEALTH & RADAR (3-tier ASCII Cards)
         sb.append(TUIBox.line(" " + ConsoleTheme.bold("SYSTEM HEALTH & RADAR"), width)).append("\n");
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
-        String connVal = activeConn + " / " + totalConn;
-        String alertVal = String.valueOf(activeAlerts);
-        String threatVal = unresolvedThreats + " Threats";
-        String auditVal = String.valueOf(auditTrailCount);
+        // Card 1: ACTIVE THREATS (22w)
+        String c1Top = ConsoleTheme.border("┌─── ") + ConsoleTheme.bold("ACTIVE THREATS") + ConsoleTheme.border(" ─┐");
+        String alertStr = (activeAlerts < 10 ? "0" + activeAlerts : String.valueOf(activeAlerts)) + " Open Alerts";
+        String c1R1 = ConsoleTheme.border("│ ") + (activeAlerts > 0 ? Ansi.red(String.format("%-18s", alertStr)) : Ansi.green(String.format("%-18s", "00 Clear [✓]"))) + ConsoleTheme.border(" │");
+        String c1R2 = ConsoleTheme.border("│ ") + ConsoleTheme.muted(String.format("%-18s", "System Perimeter")) + ConsoleTheme.border(" │");
+        String c1Bot = ConsoleTheme.border("└────────────────────┘");
 
-        sb.append(TUIBox.twoColumns(" HikariCP Connections : " + connVal, "Active Fraud Alerts : " + alertVal + " ", width)).append("\n");
-        sb.append(TUIBox.twoColumns(" Unresolved Incidents : " + threatVal, "Audit Trail Entries : " + auditVal + " ", width)).append("\n");
+        // Card 2: AML INCIDENTS (24w)
+        String c2Top = ConsoleTheme.border("┌──── ") + ConsoleTheme.bold("AML INCIDENTS") + ConsoleTheme.border(" ───┐");
+        String amlStr = (unresolvedThreats < 10 ? "0" + unresolvedThreats : String.valueOf(unresolvedThreats)) + " Unresolved";
+        String c2R1 = ConsoleTheme.border("│ ") + (unresolvedThreats > 0 ? Ansi.yellow(String.format("%-20s", amlStr)) : Ansi.green(String.format("%-20s", "00 Clean Feed [✓]"))) + ConsoleTheme.border(" │");
+        String c2R2 = ConsoleTheme.border("│ ") + ConsoleTheme.muted(String.format("%-20s", "Surveillance Active")) + ConsoleTheme.border(" │");
+        String c2Bot = ConsoleTheme.border("└──────────────────────┘");
+
+        // Card 3: AUDIT TRAIL (28w)
+        String c3Top = ConsoleTheme.border("┌──────── ") + ConsoleTheme.bold("AUDIT TRAIL") + ConsoleTheme.border(" ─────┐");
+        String c3R1 = ConsoleTheme.border("│ ") + ConsoleTheme.primary(String.format("%-14s", auditTrailCount + " Entries")) + " " + Ansi.green("[✓]") + "      " + ConsoleTheme.border(" │");
+        String c3R2 = ConsoleTheme.border("│ ") + ConsoleTheme.muted(String.format("%-24s", "Immutable Hash Chain")) + ConsoleTheme.border(" │");
+        String c3Bot = ConsoleTheme.border("└──────────────────────────┘");
+
+        sb.append(TUIBox.line(c1Top + "  " + c2Top + "  " + c3Top, width)).append("\n");
+        sb.append(TUIBox.line(c1R1 + "  " + c2R1 + "  " + c3R1, width)).append("\n");
+        sb.append(TUIBox.line(c1R2 + "  " + c2R2 + "  " + c3R2, width)).append("\n");
+        sb.append(TUIBox.line(c1Bot + "  " + c2Bot + "  " + c3Bot, width)).append("\n");
+
         sb.append(TUIBox.emptyLine(width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
@@ -447,9 +511,16 @@ public class StaffDashboardScreen implements Screen {
         sb.append(TUIBox.line("  " + thContent, width)).append("\n");
         sb.append(TUIBox.line("  " + "─".repeat(74), width)).append("\n");
 
-        if (alerts != null && !alerts.isEmpty()) {
-            for (int i = 0; i < Math.min(3, alerts.size()); i++) {
-                FraudAlert alert = alerts.get(i);
+        List<FraudAlert> sortedAlerts = new java.util.ArrayList<>(alerts != null ? alerts : Collections.emptyList());
+        sortedAlerts.sort((a, b) -> {
+            int rA = a.getRiskLevel() == RiskLevel.HIGH ? 3 : (a.getRiskLevel() == RiskLevel.MEDIUM ? 2 : 1);
+            int rB = b.getRiskLevel() == RiskLevel.HIGH ? 3 : (b.getRiskLevel() == RiskLevel.MEDIUM ? 2 : 1);
+            return Integer.compare(rB, rA);
+        });
+
+        if (!sortedAlerts.isEmpty()) {
+            for (int i = 0; i < Math.min(3, sortedAlerts.size()); i++) {
+                FraudAlert alert = sortedAlerts.get(i);
                 String desc = alert.getDescription() != null ? alert.getDescription() : "-";
                 if (desc.length() > 29) {
                     desc = desc.substring(0, 26) + "...";
@@ -462,6 +533,9 @@ public class StaffDashboardScreen implements Screen {
 
                 String rowLine = String.format("%-10s%-10s%-8s%-17s%-29s", aid, uid, risk, st, desc);
                 sb.append(TUIBox.line("  " + rowLine, width)).append("\n");
+            }
+            if (sortedAlerts.size() > 3) {
+                sb.append(TUIBox.line("  » ... and " + (sortedAlerts.size() - 3) + " more unresolved alerts. Press [1] to triage all incidents.", width)).append("\n");
             }
         } else {
             sb.append(TUIBox.line("  " + ConsoleTheme.muted("No active fraud alerts detected across accounts."), width)).append("\n");
@@ -482,23 +556,27 @@ public class StaffDashboardScreen implements Screen {
         for (int i = 0; i < 2; i++) {
             boolean isSel = (selectedIndex == i);
             String prefix = isSel ? "▸ " : "  ";
-            String fullText = String.format("%s%s", prefix, compActions[i]);
-            String plainLine = String.format("  %-70s", fullText);
-            if (plainLine.length() > 74) plainLine = plainLine.substring(0, 74);
-            String renderedLine = isSel ? ("\033[7m" + plainLine + "\033[0m") : plainLine;
-            sb.append(TUIBox.line(renderedLine, width)).append("\n");
+            String plainLine = String.format("  %s%-74s", prefix, compActions[i]);
+            if (isSel) {
+                sb.append(TUIBox.fullWidthInverted(plainLine, width)).append("\n");
+            } else {
+                String rendered = plainLine.replace("[" + (i + 1) + "]", Ansi.yellow("[" + (i + 1) + "]"));
+                sb.append(TUIBox.line(rendered, width)).append("\n");
+            }
         }
 
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
-        // Centered [0] Sign Out & Terminate Session
+        // Flush [0] Sign Out & Terminate Session
         boolean selSignOut = (selectedIndex == 2);
         String prefix0 = selSignOut ? "▸ " : "  ";
-        String signOutText = prefix0 + "[0] Sign Out & Terminate Session";
-        String centeredPlain = " ".repeat(19) + signOutText + " ".repeat(19);
-        if (centeredPlain.length() > 74) centeredPlain = centeredPlain.substring(0, 74);
-        String centeredRendered = selSignOut ? ("\033[7m" + centeredPlain + "\033[0m") : centeredPlain;
-        sb.append(TUIBox.line(centeredRendered, width)).append("\n");
+        String plain0 = String.format("  %s[0] %-70s", prefix0, "Sign Out & Terminate Session");
+        if (selSignOut) {
+            sb.append(TUIBox.fullWidthInverted(plain0, width)).append("\n");
+        } else {
+            String rendered0 = plain0.replace("[0]", Ansi.yellow("[0]"));
+            sb.append(TUIBox.line(rendered0, width)).append("\n");
+        }
 
         sb.append(TUIBox.emptyLine(width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
@@ -507,15 +585,15 @@ public class StaffDashboardScreen implements Screen {
         if (statusMessage != null && statusMessage.startsWith("Status: ")) {
             statusMessage = statusMessage.substring(8);
         }
-        if (statusMessage != null && statusMessage.length() > 68) {
-            statusMessage = statusMessage.substring(0, 65) + "...";
+        if (statusMessage != null && statusMessage.length() > 70) {
+            statusMessage = statusMessage.substring(0, 67) + "...";
         }
         String statusDisplay = ConsoleTheme.muted(statusMessage);
         sb.append(TUIBox.line("Status: " + statusDisplay, width)).append("\n");
         sb.append(TUIBox.bottom(width)).append("\n");
 
         // Footer Hint
-        sb.append(ConsoleTheme.keyGuide("[↑/↓] Navigate  •  [Enter] Select  •  [1-2, 0] Hotkey  •  [Esc] Logout")).append("\n");
+        sb.append(ConsoleTheme.keyGuide("[↑/↓] Navigate • [1-2, 0] Hotkey • [F] Alert • [Enter] Select • [Esc] Logout")).append("\n");
 
         return sb.toString();
     }

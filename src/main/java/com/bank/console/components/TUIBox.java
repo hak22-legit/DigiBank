@@ -35,6 +35,28 @@ public final class TUIBox {
         return ConsoleTheme.border(String.valueOf(V)) + " " + text + " ".repeat(padding) + " " + ConsoleTheme.border(String.valueOf(V));
     }
 
+    public static String fullWidthInverted(String content, int width) {
+        int innerWidth = Math.max(0, width - 2);
+        int vis = stripAnsi(content).length();
+        int pad = Math.max(0, innerWidth - vis);
+        return ConsoleTheme.border(String.valueOf(V)) + "\033[7m" + content + " ".repeat(pad) + "\033[0m" + ConsoleTheme.border(String.valueOf(V));
+    }
+
+    public static String fullWidthInverted(String content) {
+        return fullWidthInverted(content, DEFAULT_WIDTH);
+    }
+
+    public static String fullWidthLine(String content, int width) {
+        int innerWidth = Math.max(0, width - 2);
+        int vis = stripAnsi(content).length();
+        int pad = Math.max(0, innerWidth - vis);
+        return ConsoleTheme.border(String.valueOf(V)) + content + " ".repeat(pad) + ConsoleTheme.border(String.valueOf(V));
+    }
+
+    public static String fullWidthLine(String content) {
+        return fullWidthLine(content, DEFAULT_WIDTH);
+    }
+
     public static String center(String text, int width) {
         int visibleLength = stripAnsi(text).length();
         int totalPad = Math.max(0, width - 4 - visibleLength);

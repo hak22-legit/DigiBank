@@ -95,6 +95,7 @@ public class AdminService {
         target.setPasswordHash(PasswordHasher.hash(temporaryPassword));
         if (unlockAccount) {
             target.setStatus(AdminStatus.ACTIVE);
+            target.setFailedLoginAttempts(0);
         }
         adminRepository.save(target);
 
@@ -249,7 +250,9 @@ public class AdminService {
                 .orElseThrow(() -> new AdminNotFoundException("Admin not found: " + targetAdminId));
 
         target.setStatus(AdminStatus.ACTIVE);
+        target.setFailedLoginAttempts(0);
         adminRepository.save(target);
+        StaffAuthService.resetStaffLockout(targetAdminId, target.getUsername());
 
         auditLogService.log(superAdmin.getAdminId(), "REACTIVATE_ADMIN", "admins", targetAdminId,
                 "Reactivated admin: " + target.getUsername());

@@ -9,6 +9,8 @@ import com.bank.model.entity.Transaction;
 import com.bank.model.enums.*;
 import com.bank.model.repository.AccountRepository;
 import com.bank.model.repository.LoanRepository;
+import com.bank.model.repository.NotificationRepository;
+import com.bank.model.repository.NotificationRepositoryImpl;
 import com.bank.model.repository.TransactionRepository;
 
 import java.math.BigDecimal;
@@ -23,20 +25,30 @@ public class LoanApprovalService {
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
     private final AuditLogService auditLogService;
+    private final NotificationRepository notificationRepository;
 
     public LoanApprovalService(LoanRepository loanRepository,
                                AccountRepository accountRepository,
                                TransactionRepository transactionRepository,
                                AuditLogService auditLogService) {
+        this(loanRepository, accountRepository, transactionRepository, auditLogService, new NotificationRepositoryImpl());
+    }
+
+    public LoanApprovalService(LoanRepository loanRepository,
+                               AccountRepository accountRepository,
+                               TransactionRepository transactionRepository,
+                               AuditLogService auditLogService,
+                               NotificationRepository notificationRepository) {
         this.loanRepository = loanRepository;
         this.accountRepository = accountRepository;
         this.transactionRepository = transactionRepository;
         this.auditLogService = auditLogService;
+        this.notificationRepository = notificationRepository;
     }
 
     public List<Loan> getPendingLoans(Admin loanOfficer) {
         assertLoanOfficer(loanOfficer);
-        return loanRepository.findByStatus(LoanStatus.PENDING.name());
+        return loanRepository.findPendingLoans();
     }
 
     /**
@@ -126,19 +138,44 @@ public class LoanApprovalService {
     public Loan rejectLoan(Admin loanOfficer, Long loanId, String rejectionReason) {
         assertLoanOfficer(loanOfficer);
 
-        Loan loan = loanRepository.findById(loanId)
-                .orElseThrow(() -> new LoanNotFoundException("Loan not found: " + loanId));
+        Connection conn = null;
+        Loan updated;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
 
-        if (loan.getStatus() != LoanStatus.PENDING) {
-            throw new LoanStateException("Only PENDING loans can be rejected. Current status: " + loan.getStatus());
+            Loan loan = loanRepository.findByIdForUpdate(conn, loanId)
+                    .orElseThrow(() -> new LoanNotFoundException("Loan not found: " + loanId));
+
+            if (loan.getStatus() != LoanStatus.PENDING) {
+                throw new LoanStateException("Only PENDING loans can be rejected. Current status: " + loan.getStatus());
+            }
+
+            loan.setStatus(LoanStatus.REJECTED);
+            loan.setApprovedBy(loanOfficer.getAdminId());
+            loan.setApprovedAt(LocalDateTime.now());
+            loan.setRejectionReason(rejectionReason);
+
+            loanRepository.updateWithConnection(conn, loan);
+
+            // Customer notification
+            if (notificationRepository != null && loan.getUserId() != null) {
+                String title = "Loan Application Update";
+                String formattedLoanNum = String.format("#%03d", loanId);
+                String message = String.format("Your loan request %s was rejected due to credit criteria.", formattedLoanNum);
+                String type = "LOAN_REJECTED";
+                notificationRepository.saveWithConnection(conn, loan.getUserId(), title, message, type);
+            }
+
+            conn.commit();
+            updated = loan;
+        } catch (RuntimeException | SQLException e) {
+            rollbackQuietly(conn);
+            if (e instanceof RuntimeException re) throw re;
+            throw new RuntimeException("Loan rejection failed", e);
+        } finally {
+            closeQuietly(conn);
         }
-
-        loan.setStatus(LoanStatus.REJECTED);
-        loan.setApprovedBy(loanOfficer.getAdminId());
-        loan.setApprovedAt(LocalDateTime.now());
-        loan.setRejectionReason(rejectionReason);
-
-        Loan updated = loanRepository.save(loan);
 
         auditLogService.log(loanOfficer.getAdminId(), "REJECT_LOAN", "loans", loanId,
                 "Rejected loan: " + rejectionReason);

@@ -31,4 +31,12 @@ public class Transaction {
     private UUID idempotencyKey;
     private LocalDateTime transactionDate;
     private LocalDateTime createdAt;
+
+    public String getReferenceId() {
+        String dateStr = (transactionDate != null)
+                ? transactionDate.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"))
+                : (createdAt != null ? createdAt.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd")) : "20260928");
+        long id = transactionId != null ? transactionId : 0L;
+        return String.format("TXN-%s-%05d", dateStr, id);
+    }
 }

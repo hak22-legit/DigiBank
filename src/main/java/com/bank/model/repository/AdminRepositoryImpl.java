@@ -31,7 +31,7 @@ public class AdminRepositoryImpl implements AdminRepository {
 
     @Override
     public Optional<Admin> findByEmail(String email) {
-        String sql = "SELECT * FROM admins WHERE email = ?";
+        String sql = "SELECT * FROM admins WHERE LOWER(email) = LOWER(?)";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
@@ -47,7 +47,7 @@ public class AdminRepositoryImpl implements AdminRepository {
 
     @Override
     public Optional<Admin> findByUsername(String username) {
-        String sql = "SELECT * FROM admins WHERE username = ?";
+        String sql = "SELECT * FROM admins WHERE LOWER(username) = LOWER(?)";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
@@ -86,6 +86,17 @@ public class AdminRepositoryImpl implements AdminRepository {
              Statement stmt = conn.createStatement()) {
             stmt.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS email VARCHAR(120)");
             stmt.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30)");
+            stmt.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS failed_login_attempts INT DEFAULT 0");
+            stmt.execute("ALTER TABLE admins ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP");
+            stmt.execute("UPDATE admins SET role = 'COMPLIANCE_OFFICER' WHERE LOWER(username) = 'compliance1' OR admin_id = 2");
+            try {
+                stmt.execute("UPDATE staff SET role = 'COMPLIANCE_OFFICER' WHERE LOWER(username) = 'compliance1' OR id = 2");
+            } catch (Exception ignored) {}
+            stmt.execute("INSERT INTO admins (username, email, password_hash, full_name, role, status, created_at, updated_at) " +
+                    "VALUES ('superadmin', 'superadmin@digibank.local', " +
+                    "'$2a$12$85D9VpUlX/kGWjEfszWdeuECU8307jeMxS2mifHq/hExamkbtDeUm', " +
+                    "'System Administrator', 'SUPER_ADMIN', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+                    "ON CONFLICT (username) DO UPDATE SET status = 'ACTIVE', role = 'SUPER_ADMIN', failed_login_attempts = 0, updated_at = CURRENT_TIMESTAMP");
         } catch (Exception ignored) {}
     }
 
@@ -97,8 +108,8 @@ public class AdminRepositoryImpl implements AdminRepository {
     private Admin insert(Admin admin) {
         String sql = """
         INSERT INTO admins (username, email, password_hash, full_name, phone_number, role, status,
-                             security_question, security_answer_hash, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             security_question, security_answer_hash, failed_login_attempts, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING admin_id
         """;
 
@@ -115,8 +126,9 @@ public class AdminRepositoryImpl implements AdminRepository {
             stmt.setString(7, admin.getStatus().name());
             stmt.setString(8, admin.getSecurityQuestion());
             stmt.setString(9, admin.getSecurityAnswerHash());
-            stmt.setTimestamp(10, Timestamp.valueOf(now));
+            stmt.setInt(10, admin.getFailedLoginAttempts());
             stmt.setTimestamp(11, Timestamp.valueOf(now));
+            stmt.setTimestamp(12, Timestamp.valueOf(now));
 
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
@@ -135,7 +147,8 @@ public class AdminRepositoryImpl implements AdminRepository {
         String sql = """
         UPDATE admins
         SET username = ?, email = ?, password_hash = ?, full_name = ?, phone_number = ?,
-            role = ?, status = ?, security_question = ?, security_answer_hash = ?, updated_at = ?
+            role = ?, status = ?, security_question = ?, security_answer_hash = ?,
+            failed_login_attempts = ?, updated_at = ?
         WHERE admin_id = ?
         """;
 
@@ -152,8 +165,9 @@ public class AdminRepositoryImpl implements AdminRepository {
             stmt.setString(7, admin.getStatus().name());
             stmt.setString(8, admin.getSecurityQuestion());
             stmt.setString(9, admin.getSecurityAnswerHash());
-            stmt.setTimestamp(10, Timestamp.valueOf(now));
-            stmt.setLong(11, admin.getAdminId());
+            stmt.setInt(10, admin.getFailedLoginAttempts());
+            stmt.setTimestamp(11, Timestamp.valueOf(now));
+            stmt.setLong(12, admin.getAdminId());
 
             stmt.executeUpdate();
             admin.setUpdatedAt(now);
@@ -182,6 +196,17 @@ public class AdminRepositoryImpl implements AdminRepository {
             phone = rs.getString("phone_number");
         } catch (SQLException ignored) {}
 
+        int failedAttempts = 0;
+        try {
+            failedAttempts = rs.getInt("failed_login_attempts");
+        } catch (SQLException ignored) {}
+
+        LocalDateTime lastLogin = null;
+        try {
+            Timestamp ts = rs.getTimestamp("last_login_at");
+            if (ts != null) lastLogin = ts.toLocalDateTime();
+        } catch (SQLException ignored) {}
+
         return Admin.builder()
                 .adminId(rs.getLong("admin_id"))
                 .username(rs.getString("username"))
@@ -193,11 +218,10 @@ public class AdminRepositoryImpl implements AdminRepository {
                 .status(AdminStatus.valueOf(rs.getString("status")))
                 .securityQuestion(rs.getString("security_question"))
                 .securityAnswerHash(rs.getString("security_answer_hash"))
+                .failedLoginAttempts(failedAttempts)
+                .lastLoginAt(lastLogin)
                 .createdAt(rs.getTimestamp("created_at").toLocalDateTime())
                 .updatedAt(rs.getTimestamp("updated_at").toLocalDateTime())
                 .build();
     }
-
-
-
 }

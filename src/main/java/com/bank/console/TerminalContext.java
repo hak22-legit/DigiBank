@@ -34,6 +34,7 @@ public class TerminalContext implements AutoCloseable {
         RIGHT,
         ENTER,
         ESCAPE,
+        TAB,
         BACKSPACE,
         DIGIT,
         CHAR,
@@ -148,6 +149,8 @@ public class TerminalContext implements AutoCloseable {
                     };
                 }
                 return new InputEvent(Key.ESCAPE, (char) next, next);
+            } else if (ch == '\t' || ch == 9) {
+                return new InputEvent(Key.TAB, '\t', 9);
             } else if (ch == '\r' || ch == '\n') {
                 return new InputEvent(Key.ENTER, '\n', ch);
             } else if (ch == 127 || ch == 8) {

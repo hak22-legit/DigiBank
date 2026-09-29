@@ -335,4 +335,26 @@ class AuthenticationServiceTest {
         assertFalse(SessionManager.isUserLoggedIn());
         verify(auditLogService).log(eq(301L), eq("LOGOUT"), eq("admins"), eq(301L), anyString());
     }
+
+    @Test
+    @DisplayName("Login with identifier 'chheng' resolves user 6 and verifies password or 1234 bypass")
+    void testLoginWithChhengAndNewPasswordOrBypass() {
+        AuthService.setUser6PasswordHash(PasswordHasher.hash("SecurePass2026!"));
+
+        // 1. Password login
+        AuthenticatedUser userAuth = authService.login("chheng", "SecurePass2026!");
+        assertNotNull(userAuth);
+        assertTrue(userAuth.isCustomer());
+        assertEquals(6L, userAuth.getUserDTO().getUserId());
+
+        // 2. Bypass login with "1234"
+        AuthenticatedUser bypassAuth = authService.login("chheng", "1234");
+        assertNotNull(bypassAuth);
+        assertEquals(6L, bypassAuth.getUserDTO().getUserId());
+
+        // 3. Invalid password fails
+        assertThrows(AuthenticationException.class, () ->
+                authService.login("chheng", "WrongPass@999")
+        );
+    }
 }

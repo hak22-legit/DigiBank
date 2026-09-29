@@ -1,8 +1,12 @@
 package com.bank.controller;
 
+import com.bank.exception.AuthenticationException;
 import com.bank.model.dto.AdminDTO;
+import com.bank.model.dto.AdminMapper;
 import com.bank.model.dto.AuthenticatedUser;
 import com.bank.model.dto.UserDTO;
+import com.bank.model.entity.Admin;
+import com.bank.security.SessionManager;
 import com.bank.service.AdminAuthService;
 import com.bank.service.AuthService;
 import com.bank.service.AuthenticationService;
@@ -43,10 +47,41 @@ public class AuthController {
      */
     public AuthenticatedUser login(String identifier, String password) {
         if (authenticationService != null) {
-            return authenticationService.login(identifier, password);
+            try {
+                return authenticationService.login(identifier, password);
+            } catch (AuthenticationException e) {
+                if (legacyAuthService != null) {
+                    try {
+                        UserDTO user = legacyAuthService.login(identifier, password);
+                        if (SessionManager.isAdminLoggedIn() && SessionManager.getCurrentAdmin() != null) {
+                            Admin currentAdmin = SessionManager.getCurrentAdmin();
+                            return AuthenticatedUser.fromAdmin(AdminMapper.toDTO(currentAdmin));
+                        }
+                        return AuthenticatedUser.fromCustomer(user);
+                    } catch (AuthenticationException ignored) {
+                        // ignore and fall through
+                    }
+                }
+                throw e;
+            }
         }
-        UserDTO user = legacyAuthService.login(identifier, password);
-        return AuthenticatedUser.fromCustomer(user);
+        if (legacyAdminAuthService != null) {
+            try {
+                AdminDTO admin = legacyAdminAuthService.login(identifier, password);
+                return AuthenticatedUser.fromAdmin(admin);
+            } catch (AuthenticationException ignored) {
+                // fall through to legacyAuthService
+            }
+        }
+        if (legacyAuthService != null) {
+            UserDTO user = legacyAuthService.login(identifier, password);
+            if (SessionManager.isAdminLoggedIn() && SessionManager.getCurrentAdmin() != null) {
+                Admin currentAdmin = SessionManager.getCurrentAdmin();
+                return AuthenticatedUser.fromAdmin(AdminMapper.toDTO(currentAdmin));
+            }
+            return AuthenticatedUser.fromCustomer(user);
+        }
+        throw new AuthenticationException("Invalid username or password");
     }
 
     /**
@@ -119,6 +154,13 @@ public class AuthController {
         if (legacyAuthService != null) {
             legacyAuthService.resetPasswordWithOtp(userId, otpCode, newPassword, confirmPassword);
             return;
+        }
+        throw new UnsupportedOperationException("AuthService not initialized");
+    }
+
+    public boolean completePasswordReset(Long userId, String rawPassword) {
+        if (legacyAuthService != null) {
+            return legacyAuthService.completePasswordReset(userId, rawPassword);
         }
         throw new UnsupportedOperationException("AuthService not initialized");
     }

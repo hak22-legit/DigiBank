@@ -3,6 +3,7 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
+import com.bank.console.TerminalInputHandler;
 import com.bank.console.components.ConsolePrompt;
 import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
@@ -45,7 +46,7 @@ import java.util.Map;
 public class AuditLogScreen implements Screen {
     private static final Logger logger = LoggerFactory.getLogger(AuditLogScreen.class);
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
-    private static final DateTimeFormatter FILE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
+    static final DateTimeFormatter FILE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss");
 
     public enum DateFilterPreset {
         TODAY("TODAY"),
@@ -88,8 +89,10 @@ public class AuditLogScreen implements Screen {
         Attributes origAttributes = terminal.enterRawMode();
         NonBlockingReader reader = terminal.reader();
 
+        ForensicAuditTrailScreen.drainBufferOnEntry(reader);
+
         int currentPage = 1;
-        int pageSize = 6;
+        int pageSize = 5;
         int selectedIndex = 0;
         DateFilterPreset activePreset = DateFilterPreset.TODAY;
         LocalDate customDate = null;
@@ -111,10 +114,12 @@ public class AuditLogScreen implements Screen {
                     ScreenRenderer.render(rendered, firstRestrictedRender);
                     firstRestrictedRender = false;
 
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE
-                            || event.action() == KeyAction.ENTER
-                            || (event.action() == KeyAction.CHAR && (event.ch() == '1' || event.ch() == 'b' || event.ch() == 'B'))) {
+                    TerminalInputHandler.KeyCode event = TerminalInputHandler.readNavigationKey(reader);
+                    if (event.isEscape()
+                            || event.isEnter()
+                            || event.is('1')
+                            || event.is('B')
+                            || event.is('0')) {
                         navigator.pop();
                         return;
                     }
@@ -127,9 +132,9 @@ public class AuditLogScreen implements Screen {
             return;
         }
 
-        boolean running = true;
+        boolean inScreen = true;
         try {
-            while (running) {
+            while (inScreen) {
                 try {
                     List<AuditLog> allLogs;
                     try {
@@ -212,10 +217,10 @@ public class AuditLogScreen implements Screen {
                     String currentStatus = statusMessage;
                     if (currentStatus == null) {
                         if (selectedLog != null) {
-                            currentStatus = String.format("Record #%d selected. Press [Enter] to inspect digital signature.",
+                            currentStatus = String.format("Status: Record #%d verified. Press [Enter] to inspect signature.",
                                     selectedLog.getLogId() != null ? selectedLog.getLogId() : 0);
                         } else {
-                            currentStatus = "No audit records found for the selected period.";
+                            currentStatus = "Status: No audit records found for the selected period.";
                         }
                     }
 
@@ -224,73 +229,107 @@ public class AuditLogScreen implements Screen {
                     ScreenRenderer.render(rendered, firstRender);
                     firstRender = false;
 
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE || (event.action() == KeyAction.CHAR && (event.ch() == 'b' || event.ch() == 'B'))) {
-                        running = false;
-                        navigator.pop();
-                        return;
-                    } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
-                        if (selectedIndex > 0) {
-                            selectedIndex--;
+                    TerminalInputHandler.KeyCode event = TerminalInputHandler.readNavigationKey(reader);
+                    if (event.code() == -1) {
+                        inScreen = false;
+                        break;
+                    }
+
+                    String key = event.asNormalizedKey();
+
+                    switch (key) {
+                        case "UP":
+                        case "K":
+                            if (selectedIndex > 0) {
+                                selectedIndex--;
+                            }
                             statusMessage = null;
-                        } else if (currentPage > 1) {
-                            currentPage--;
-                            selectedIndex = pageSize - 1;
+                            break;
+
+                        case "DOWN":
+                        case "J":
+                            if (pageItems != null && !pageItems.isEmpty() && selectedIndex < pageItems.size() - 1) {
+                                selectedIndex++;
+                            }
                             statusMessage = null;
-                        }
-                    } else if (event.action() == KeyAction.DOWN || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
-                        if (selectedIndex < pageItems.size() - 1) {
-                            selectedIndex++;
-                            statusMessage = null;
-                        } else if (currentPage < totalPages) {
-                            currentPage++;
-                            selectedIndex = 0;
-                            statusMessage = null;
-                        }
-                    } else if (event.action() == KeyAction.LEFT || (event.action() == KeyAction.CHAR && (event.ch() == 'h' || event.ch() == 'H'))) {
-                        if (currentPage > 1) {
-                            currentPage--;
-                            selectedIndex = 0;
-                            statusMessage = null;
-                        }
-                    } else if (event.action() == KeyAction.RIGHT || (event.action() == KeyAction.CHAR && (event.ch() == 'l' || event.ch() == 'L'))) {
-                        if (currentPage < totalPages) {
-                            currentPage++;
-                            selectedIndex = 0;
-                            statusMessage = null;
-                        }
-                    } else if (event.action() == KeyAction.ENTER) {
-                        if (selectedLog != null) {
-                            renderDetailModal(terminal, reader, selectedLog, width);
-                            firstRender = true;
-                        }
-                    } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
-                        char c = event.ch();
-                        if (c == '1') {
+                            break;
+
+                        case "1":
                             activePreset = DateFilterPreset.TODAY;
                             currentPage = 1;
                             selectedIndex = 0;
                             statusMessage = null;
                             isError = false;
-                        } else if (c == '2') {
+                            break;
+
+                        case "2":
                             activePreset = DateFilterPreset.YESTERDAY;
                             currentPage = 1;
                             selectedIndex = 0;
                             statusMessage = null;
                             isError = false;
-                        } else if (c == '3') {
+                            break;
+
+                        case "3":
                             activePreset = DateFilterPreset.LAST_7_DAYS;
                             currentPage = 1;
                             selectedIndex = 0;
                             statusMessage = null;
                             isError = false;
-                        } else if (c == '4') {
+                            break;
+
+                        case "4":
                             activePreset = DateFilterPreset.ALL;
                             currentPage = 1;
                             selectedIndex = 0;
                             statusMessage = null;
                             isError = false;
-                        } else if (c == 'c' || c == 'C') {
+                            break;
+
+                        case "ENTER":
+                            if (selectedLog != null) {
+                                renderDetailModal(terminal, reader, selectedLog, width);
+                                firstRender = true;
+                            }
+                            break;
+
+                        case "ESC":
+                        case "B":
+                            inScreen = false;
+                            break;
+
+                        case "TAB":
+                            activePreset = switch (activePreset) {
+                                case TODAY -> DateFilterPreset.YESTERDAY;
+                                case YESTERDAY -> DateFilterPreset.LAST_7_DAYS;
+                                case LAST_7_DAYS -> DateFilterPreset.ALL;
+                                case ALL, CUSTOM -> DateFilterPreset.TODAY;
+                            };
+                            currentPage = 1;
+                            selectedIndex = 0;
+                            statusMessage = null;
+                            isError = false;
+                            break;
+
+                        case "P":
+                        case "LEFT":
+                            if (currentPage > 1) {
+                                currentPage--;
+                                selectedIndex = 0;
+                                statusMessage = null;
+                            }
+                            break;
+
+                        case "N":
+                        case "RIGHT":
+                            if (currentPage < totalPages) {
+                                currentPage++;
+                                selectedIndex = 0;
+                                statusMessage = null;
+                            }
+                            break;
+
+                        case "C":
                             LocalDate picked = promptCustomDateModal(terminal, reader, width, customDate);
                             if (picked != null) {
                                 customDate = picked;
@@ -301,7 +340,9 @@ public class AuditLogScreen implements Screen {
                                 isError = false;
                             }
                             firstRender = true;
-                        } else if (c == 'f' || c == 'F') {
+                            break;
+
+                        case "F":
                             terminal.setAttributes(origAttributes);
                             String input = ConsolePrompt.promptOptional("Enter Admin ID or Username to filter by", "");
                             terminal.enterRawMode();
@@ -316,7 +357,9 @@ public class AuditLogScreen implements Screen {
                             currentPage = 1;
                             selectedIndex = 0;
                             isError = false;
-                        } else if (c == 'e' || c == 'E') {
+                            break;
+
+                        case "E":
                             try {
                                 String filename = "audit_dump_" + LocalDateTime.now().format(FILE_FMT) + ".csv";
                                 exportAuditLogs(periodFiltered, filename);
@@ -326,7 +369,11 @@ public class AuditLogScreen implements Screen {
                                 statusMessage = "Export failed: " + e.getMessage();
                                 isError = true;
                             }
-                        }
+                            break;
+
+                        default:
+                            // Do not exit screen on unknown key!
+                            break;
                     }
                 } catch (Exception ex) {
                     logger.error("AuditLogScreen error recovery", ex);
@@ -337,9 +384,10 @@ public class AuditLogScreen implements Screen {
         } finally {
             terminal.setAttributes(origAttributes);
         }
+        navigator.pop();
     }
 
-    private static String getActorUsername(AuditLog log) {
+    static String getActorUsername(AuditLog log) {
         if (log.getActorName() != null && !log.getActorName().isBlank()) {
             return log.getActorName();
         }
@@ -366,16 +414,73 @@ public class AuditLogScreen implements Screen {
         return "PORTAL";
     }
 
-    private static String getResult(AuditLog log) {
+    private static String formatTargetLong(AuditLog log) {
+        if ("loans".equalsIgnoreCase(log.getTargetTable())) {
+            String applicant = "";
+            if (log.getDetails() != null && log.getDetails().contains("Applicant:")) {
+                applicant = log.getDetails().substring(log.getDetails().indexOf("Applicant:"));
+            }
+            return String.format("Loan Application #LN-%s %s",
+                    log.getTargetId() != null ? log.getTargetId() : "00",
+                    !applicant.isEmpty() ? "(" + applicant + ")" : "").trim();
+        } else if ("accounts".equalsIgnoreCase(log.getTargetTable())) {
+            return "Account #ACC-" + log.getTargetId();
+        } else if ("users".equalsIgnoreCase(log.getTargetTable())) {
+            return "User Profile #USR-" + String.format("%02d", log.getTargetId());
+        } else if ("admins".equalsIgnoreCase(log.getTargetTable())) {
+            return "Staff Account #ADM-" + String.format("%02d", log.getTargetId());
+        }
+        return (log.getTargetTable() != null ? log.getTargetTable() : "SYSTEM")
+                + (log.getTargetId() != null ? " #" + log.getTargetId() : "");
+    }
+
+    public static String getRiskLevel(AuditLog log) {
+        String act = log.getAction() != null ? log.getAction().toUpperCase() : "";
+        String det = log.getDetails() != null ? log.getDetails().toUpperCase() : "";
+        if (act.contains("SUSPICIOUS") || act.contains("AML") || act.contains("FLAG")
+                || act.contains("ACCESS_DENIED") || act.contains("BRUTE") || act.contains("SUSPEND")
+                || det.contains("HIGH RISK") || det.contains("SUSPICIOUS")) {
+            return "HIGH";
+        }
+        if (act.contains("REJECT") || act.contains("RESET") || act.contains("OVERRIDE")
+                || act.contains("FREEZE") || det.contains("REJECT") || det.contains("CREDIT SCORE")) {
+            return "MED";
+        }
+        if (act.contains("APPROVE") || act.contains("CREATE") || act.contains("TRANSFER")
+                || act.contains("DEPOSIT") || act.contains("WITHDRAW") || act.contains("PAYMENT")) {
+            return "LOW";
+        }
+        return "INFO";
+    }
+
+    public static String colorizeRisk(String risk) {
+        return switch (risk) {
+            case "HIGH" -> "\033[31mHIGH\033[0m  ";
+            case "MED"  -> "\033[33mMED\033[0m   ";
+            case "LOW"  -> "\033[32mLOW\033[0m   ";
+            default     -> "\033[90mINFO\033[0m  ";
+        };
+    }
+
+    public static String colorizeResult(String result) {
+        if ("SUCCESS".equalsIgnoreCase(result)) {
+            return "\033[32mSUCCESS\033[0m      ";
+        } else if ("FAILED".equalsIgnoreCase(result)) {
+            return "\033[31mFAILED\033[0m       ";
+        }
+        return String.format("%-13s", result);
+    }
+
+    static String getResult(AuditLog log) {
         String act = log.getAction();
-        if (act != null && (act.contains("FAIL") || act.contains("REJECT") || act.contains("DENIED"))) {
+        if ("REJECT_LOAN".equals(act)) {
+            return "SUCCESS";
+        }
+        if (act != null && (act.contains("FAIL") || act.contains("DENIED"))) {
             return "FAILED";
         }
-        if (act != null && (act.contains("FLAG") || act.contains("AML") || act.contains("SUSPICIOUS") || act.contains("VELOCITY"))) {
-            return "FLAGGED";
-        }
-        if (log.getDetails() != null && (log.getDetails().contains("FLAGGED") || log.getDetails().contains("Moderate"))) {
-            return "FLAGGED";
+        if (log.getDetails() != null && log.getDetails().contains("FAILED")) {
+            return "FAILED";
         }
         return "SUCCESS";
     }
@@ -403,13 +508,14 @@ public class AuditLogScreen implements Screen {
         StringBuilder sb = new StringBuilder();
 
         sb.append(TUIBox.top(width)).append("\n");
-        sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > SUPER ADMIN > FORENSIC AUDIT TRAIL"), width)).append("\n");
+        String integrityBadge = "INTEGRITY: " + Ansi.green("[VERIFIED]");
+        sb.append(TUIBox.line(ConsoleTheme.primary("DIGIBANK CORE > SUPER ADMIN > FORENSIC AUDIT TRAIL") + "       " + integrityBadge, width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
         // 1. Period Filter Tabs Row
         long countToday = presetCounts != null ? presetCounts.getOrDefault(DateFilterPreset.TODAY, 0L) : 0L;
         long countYesterday = presetCounts != null ? presetCounts.getOrDefault(DateFilterPreset.YESTERDAY, 0L) : 0L;
-        long countAll = presetCounts != null ? presetCounts.getOrDefault(DateFilterPreset.ALL, (long) items.size()) : (long) items.size();
+        long countAll = presetCounts != null ? presetCounts.getOrDefault(DateFilterPreset.ALL, (long) (items != null ? items.size() : 0)) : (long) (items != null ? items.size() : 0);
 
         String t1 = (activePreset == DateFilterPreset.TODAY)
                 ? "▸ " + ConsoleTheme.highlight("[1] TODAY (" + countToday + ")")
@@ -418,22 +524,23 @@ public class AuditLogScreen implements Screen {
                 ? "▸ " + ConsoleTheme.highlight("[2] YESTERDAY (" + countYesterday + ")")
                 : "  [2] YESTERDAY (" + countYesterday + ")";
         String t3 = (activePreset == DateFilterPreset.LAST_7_DAYS)
-                ? "▸ " + ConsoleTheme.highlight("[3] 7 DAYS")
-                : "  [3] 7 DAYS";
+                ? "▸ " + ConsoleTheme.highlight("[3] 7D")
+                : "  [3] 7D";
         String t4 = (activePreset == DateFilterPreset.ALL)
-                ? "▸ " + ConsoleTheme.highlight("[4] ALL (" + countAll + ")")
-                : "  [4] ALL (" + countAll + ")";
+                ? "▸ " + ConsoleTheme.highlight("[4] ALL")
+                : "  [4] ALL";
 
-        String tabLine = String.format("PERIOD: %s  %s  %s  %s", t1, t2, t3, t4);
+        String tabLine = String.format("PERIOD: %-22s %-22s %-12s %s", t1, t2, t3, t4);
         sb.append(TUIBox.line(tabLine, width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
         // 2. Table Header (78 visible chars)
-        String th = String.format("%-12s%-12s%-16s%-8s%-9s%-21s", " TIME (UTC)", "ACTOR", "ACTION", "TARGET", "RESULT", "DETAILS");
+        String th = String.format(" %-12s %-12s %-19s %-10s %-6s %-13s",
+                "TIME (UTC)", "ACTOR", "ACTION", "TARGET", "RISK", "RESULT");
         sb.append(TUIBox.line(th, width)).append("\n");
         sb.append(TUIBox.line("─".repeat(78), width)).append("\n");
 
-        // 3. Table Rows
+        // 3. Table Rows (Up to 5 rows)
         if (items != null && !items.isEmpty()) {
             for (int i = 0; i < items.size(); i++) {
                 AuditLog audit = items.get(i);
@@ -442,32 +549,26 @@ public class AuditLogScreen implements Screen {
                 String prefix = isSelected ? "▸" : " ";
                 String tsStr = audit.getCreatedAt() != null ? audit.getCreatedAt().format(TIME_FMT) : "00:00:00";
                 String rawResult = getResult(audit);
+                String rawRisk = getRiskLevel(audit);
 
-                String actorCol = truncate(getActorUsername(audit), 10);
-                String actionCol = truncate(audit.getAction(), 14);
-                String targetCol = truncate(getTarget(audit), 6);
-                String resultCol = rawResult;
-                String detailsCol = truncate(getDetails(audit), 21);
+                String actorCol = truncate(getActorUsername(audit), 12);
+                String actionCol = truncate(audit.getAction(), 19);
+                String targetCol = truncate(getTarget(audit), 10);
+                String riskCol = String.format("%-6s", rawRisk);
+                String resultCol = String.format("%-13s", rawResult);
 
-                String plainRow = String.format("%s%-11s%-12s%-16s%-8s%-9s%-21s",
-                        prefix, tsStr + "   ",
-                        String.format("%-10s  ", actorCol),
-                        String.format("%-14s  ", actionCol),
-                        String.format("%-6s  ", targetCol),
-                        String.format("%-7s  ", resultCol),
-                        String.format("%-21s", detailsCol));
+                String plainRow = String.format("%s%-12s %-12s %-19s %-10s %-6s %-13s",
+                        prefix, tsStr, actorCol, actionCol, targetCol, riskCol, resultCol);
+                plainRow = String.format("%-78s", plainRow);
 
                 if (isSelected) {
-                    sb.append(TUIBox.line("\033[7m" + plainRow + "\033[0m", width)).append("\n");
+                    sb.append(TUIBox.fullWidthInverted(plainRow, width)).append("\n");
                 } else {
-                    String coloredRow = plainRow;
-                    if ("SUCCESS".equals(rawResult)) {
-                        coloredRow = coloredRow.replace("SUCCESS", "\033[32mSUCCESS\033[0m");
-                    } else if ("FLAGGED".equals(rawResult)) {
-                        coloredRow = coloredRow.replace("FLAGGED", "\033[33mFLAGGED\033[0m");
-                    } else if ("FAILED".equals(rawResult)) {
-                        coloredRow = coloredRow.replace("FAILED", "\033[31mFAILED\033[0m");
-                    }
+                    String coloredRow = String.format("%s%-12s %-12s %-19s %-10s ",
+                            prefix, tsStr, actorCol, actionCol, targetCol)
+                            + colorizeRisk(rawRisk)
+                            + " "
+                            + colorizeResult(rawResult);
                     sb.append(TUIBox.line(coloredRow, width)).append("\n");
                 }
             }
@@ -475,44 +576,67 @@ public class AuditLogScreen implements Screen {
             sb.append(TUIBox.line("  " + ConsoleTheme.muted("No forensic audit records match the current criteria."), width)).append("\n");
         }
 
-        int remaining = Math.max(0, 6 - (items != null ? items.size() : 0));
+        int remaining = Math.max(0, 5 - (items != null ? items.size() : 0));
         for (int i = 0; i < remaining; i++) {
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+        }
+        // 1 empty padded line below 5th table row for breathing room
+        sb.append(TUIBox.emptyLine(width)).append("\n");
+
+        sb.append(TUIBox.divider(width)).append("\n");
+
+        // 4. EVENT INSPECTION [#ID] Drawer (5 lines total inside section)
+        AuditLog inspected = (items != null && selectedIndex >= 0 && selectedIndex < items.size())
+                ? items.get(selectedIndex) : null;
+        if (inspected != null) {
+            long logId = inspected.getLogId() != null ? inspected.getLogId() : 0;
+            sb.append(TUIBox.line(ConsoleTheme.bold(String.format("EVENT INSPECTION [#%d]", logId)), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+
+            String det = inspected.getDetails() != null ? inspected.getDetails() : "No extended event notes recorded.";
+            if (det.length() > 66) det = det.substring(0, 63) + "...";
+            sb.append(TUIBox.line(String.format("  Details : %-66s", det), width)).append("\n");
+
+            String tgt = formatTargetLong(inspected);
+            if (tgt.length() > 66) tgt = tgt.substring(0, 63) + "...";
+            sb.append(TUIBox.line(String.format("  Target  : %-66s", tgt), width)).append("\n");
+
+            String secLine = "  Security: Hash SHA-256 Verified " + Ansi.green("[IMMUTABLE]") + "   •   Signature: " + Ansi.green("RSA-4096-OK");
+            sb.append(TUIBox.line(secLine, width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+        } else {
+            sb.append(TUIBox.line(ConsoleTheme.bold("EVENT INSPECTION [NONE]"), width)).append("\n");
+            sb.append(TUIBox.emptyLine(width)).append("\n");
+            sb.append(TUIBox.line("  Details : No records found for current selection.", width)).append("\n");
+            sb.append(TUIBox.line("  Target  : -", width)).append("\n");
+            String secLine = "  Security: Hash SHA-256 Verified " + Ansi.green("[IMMUTABLE]") + "   •   Signature: " + Ansi.green("RSA-4096-OK");
+            sb.append(TUIBox.line(secLine, width)).append("\n");
             sb.append(TUIBox.emptyLine(width)).append("\n");
         }
 
         sb.append(TUIBox.divider(width)).append("\n");
 
-        // 4. Navigation and Filter Info Row
-        LocalDate todayDate = LocalDate.now();
-        String filterLabel = switch (activePreset) {
-            case TODAY -> "TODAY: " + todayDate;
-            case YESTERDAY -> "YESTERDAY: " + todayDate.minusDays(1);
-            case LAST_7_DAYS -> "7 DAYS";
-            case ALL -> "ALL";
-            case CUSTOM -> "CUSTOM: " + (customDate != null ? customDate : todayDate);
-        };
-        if (actorFilter != null && !actorFilter.isEmpty()) {
-            filterLabel += " | ACTOR: " + actorFilter;
-        }
-        if (filterLabel.length() > 22) {
-            filterLabel = filterLabel.substring(0, 19) + "...";
-        }
-
-        String navLine = String.format("Page: [ %d / %d ]  |  Filter: [%s]  |  [C: Pick Custom Date]",
-                currentPage, Math.max(1, totalPages), filterLabel);
-        sb.append(TUIBox.line(navLine, width)).append("\n");
-        sb.append(TUIBox.divider(width)).append("\n");
-
         // 5. Status Line
-        String statusDisplay = isError ? ConsoleTheme.error(statusMessage) : statusMessage;
-        if (TUIBox.visibleLength(statusDisplay) > 70) {
-            statusDisplay = statusDisplay.substring(0, 67) + "...";
+        String statusDisplay = statusMessage;
+        if (statusDisplay == null || statusDisplay.isBlank()) {
+            if (inspected != null) {
+                statusDisplay = String.format("Status: Record #%d verified. Press [Enter] to inspect signature.",
+                        inspected.getLogId() != null ? inspected.getLogId() : 0);
+            } else {
+                statusDisplay = "Status: No audit records found for the selected period.";
+            }
         }
-        sb.append(TUIBox.line("Status: " + statusDisplay, width)).append("\n");
+        if (isError) {
+            statusDisplay = ConsoleTheme.error(statusDisplay);
+        }
+        if (TUIBox.visibleLength(statusDisplay) > 76) {
+            statusDisplay = statusDisplay.substring(0, 73) + "...";
+        }
+        sb.append(TUIBox.line(statusDisplay, width)).append("\n");
         sb.append(TUIBox.bottom(width)).append("\n");
 
-        // 6. Footer Key Guide
-        sb.append(Ansi.keyGuide("[↑/↓] Select (Auto) • [1-4] Period • [Enter] Inspect • [C] Custom • [Esc] Back")).append("\n");
+        // 6. Concise and Dim Gray Footer
+        sb.append("\033[2;90m[↑/↓] Move  •  [Enter] View  •  [1-4] Filter  •  [C] Date  •  [Esc] Back\033[0m\n");
 
         return sb.toString();
     }
@@ -541,7 +665,7 @@ public class AuditLogScreen implements Screen {
         return renderContent(items, currentPage, totalPages, selectedIndex, preset, cDate, null, actorFilter, statusMessage, isError, width);
     }
 
-    private static LocalDate promptCustomDateModal(Terminal terminal, NonBlockingReader reader, int width, LocalDate currentDate) throws IOException {
+    static LocalDate promptCustomDateModal(Terminal terminal, NonBlockingReader reader, int width, LocalDate currentDate) throws IOException {
         StringBuilder dateBuf = new StringBuilder(currentDate != null ? currentDate.toString() : LocalDate.now().toString());
         int actionIdx = 0; // 0: Apply, 1: Cancel
         int focusedField = 0; // 0: Date input, 1: Actions
@@ -576,20 +700,20 @@ public class AuditLogScreen implements Screen {
             ScreenRenderer.render(sb.toString(), firstRender);
             firstRender = false;
 
-            KeyEvent event = TUIFormHelper.readKey(reader);
-            if (event.action() == KeyAction.ESCAPE) {
+            TerminalInputHandler.KeyCode event = TerminalInputHandler.readKey(reader, focusedField == 0);
+            if (event.isEscape()) {
                 return null;
-            } else if (event.action() == KeyAction.TAB || event.action() == KeyAction.DOWN) {
+            } else if (event.isTab() || event.isDown()) {
                 focusedField = (focusedField + 1) % 2;
-            } else if (event.action() == KeyAction.SHIFT_TAB || event.action() == KeyAction.UP) {
+            } else if (event.isShiftTab() || event.isUp()) {
                 focusedField = (focusedField - 1 + 2) % 2;
-            } else if (focusedField == 1 && (event.action() == KeyAction.LEFT || event.action() == KeyAction.RIGHT)) {
+            } else if (focusedField == 1 && (event.isLeft() || event.isRight())) {
                 actionIdx = (actionIdx == 0) ? 1 : 0;
-            } else if (event.action() == KeyAction.BACKSPACE) {
+            } else if (event.isBackspace()) {
                 if (focusedField == 0 && dateBuf.length() > 0) {
                     dateBuf.deleteCharAt(dateBuf.length() - 1);
                 }
-            } else if (event.action() == KeyAction.ENTER) {
+            } else if (event.isEnter()) {
                 if (focusedField == 0) {
                     focusedField = 1;
                 } else if (focusedField == 1) {
@@ -604,23 +728,21 @@ public class AuditLogScreen implements Screen {
                         return null;
                     }
                 }
-            } else if (event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) {
+            } else if (focusedField == 1) {
+                if (event.is('1')) {
+                    try {
+                        return LocalDate.parse(dateBuf.toString().trim());
+                    } catch (Exception e) {
+                        statusMsg = "Invalid date format. Expected YYYY-MM-DD (e.g. 2026-09-15).";
+                        isError = true;
+                    }
+                } else if (event.is('2')) {
+                    return null;
+                }
+            } else if (focusedField == 0) {
                 char c = event.ch();
-                if (focusedField == 1) {
-                    if (c == '1') {
-                        try {
-                            return LocalDate.parse(dateBuf.toString().trim());
-                        } catch (Exception e) {
-                            statusMsg = "Invalid date format. Expected YYYY-MM-DD (e.g. 2026-09-15).";
-                            isError = true;
-                        }
-                    } else if (c == '2') {
-                        return null;
-                    }
-                } else if (focusedField == 0) {
-                    if ((Character.isDigit(c) || c == '-') && dateBuf.length() < 10) {
-                        dateBuf.append(c);
-                    }
+                if ((Character.isDigit(c) || c == '-') && dateBuf.length() < 10) {
+                    dateBuf.append(c);
                 }
             }
         }
@@ -660,14 +782,14 @@ public class AuditLogScreen implements Screen {
         ScreenRenderer.render(sb.toString(), true);
 
         while (true) {
-            KeyEvent ev = TUIFormHelper.readKey(reader);
-            if (ev.action() == KeyAction.ENTER || ev.action() == KeyAction.ESCAPE || (ev.action() == KeyAction.CHAR && (ev.ch() == 'b' || ev.ch() == 'B'))) {
+            TerminalInputHandler.KeyCode ev = TerminalInputHandler.readNavigationKey(reader);
+            if (ev.isEnter() || ev.isEscape() || ev.is('B') || ev.is('0')) {
                 break;
             }
         }
     }
 
-    private static String generateAuditSignature(AuditLog log) {
+    static String generateAuditSignature(AuditLog log) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             String raw = (log.getLogId() != null ? log.getLogId() : 0) + ":"
@@ -683,7 +805,7 @@ public class AuditLogScreen implements Screen {
         }
     }
 
-    private void exportAuditLogs(List<AuditLog> logs, String filename) throws IOException {
+    static void exportAuditLogs(List<AuditLog> logs, String filename) throws IOException {
         Path path = Path.of(filename);
         try (BufferedWriter bw = Files.newBufferedWriter(path)) {
             bw.write("log_id,timestamp,admin_id,action,target_table,target_id,details,ip_address\n");

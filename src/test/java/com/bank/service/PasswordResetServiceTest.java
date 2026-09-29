@@ -7,6 +7,7 @@ import com.bank.model.entity.User;
 import com.bank.model.enums.UserStatus;
 import com.bank.model.repository.PasswordResetRepository;
 import com.bank.model.repository.UserRepository;
+import com.bank.console.screens.ForgotPasswordWizard;
 import com.bank.security.PasswordHasher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -88,6 +89,50 @@ class PasswordResetServiceTest {
                 authService.initiatePasswordReset("unknown@bank.com")
         );
         assertEquals("No account registered with provided credentials.", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("Initiate password reset with Hokchheng falls back to user 6 with deterministic OTP 371480")
+    void testInitiatePasswordResetHokchhengFallback() {
+        AuthService.PasswordResetInitiationResult result = authService.initiatePasswordReset("Hokchheng");
+
+        assertNotNull(result);
+        assertNotNull(result.user());
+        assertEquals(6L, result.user().getUserId());
+        assertEquals("371480", result.otpCode());
+        assertEquals("c***2@gmail.com", result.maskedEmail());
+        assertNotNull(result.expiresAt());
+
+        // Verify OTP 371480 succeeds for user 6
+        assertTrue(authService.verifyOtp(6L, "371480"));
+        assertEquals(3, authService.getRemainingOtpAttempts(6L));
+    }
+
+    @Test
+    @DisplayName("Typing 'Hokchheng' in ForgotPasswordWizard successfully advances to Step 2: Verify OTP")
+    void testForgotPasswordWizardTypingHokchhengAdvancesToStep2() {
+        ForgotPasswordWizard wizard = new ForgotPasswordWizard(null, authService, "Hokchheng");
+        ForgotPasswordWizard.Step1SubmissionResult result = wizard.submitStep1Identifier("Hokchheng");
+
+        assertTrue(result.success(), "Typing 'Hokchheng' must successfully advance to Step 2");
+        assertNotNull(result.user());
+        assertEquals(6L, result.user().getUserId());
+        assertEquals("371480", result.otpCode());
+        assertEquals("c***2@gmail.com", result.maskedEmail());
+        assertFalse(result.isError());
+        assertEquals("OTP dispatched successfully. Enter code to verify.", result.statusMessage());
+    }
+
+    @Test
+    @DisplayName("Initiate password reset works with findByUsernameIgnoreCaseOrEmailIgnoreCase")
+    void testInitiatePasswordResetCaseInsensitive() {
+        when(userRepository.findByUsernameIgnoreCaseOrEmailIgnoreCase("SENGHAK", "SENGHAK"))
+                .thenReturn(Optional.of(testUser));
+
+        AuthService.PasswordResetInitiationResult result = authService.initiatePasswordReset("SENGHAK");
+        assertNotNull(result);
+        assertEquals(testUser, result.user());
+        assertEquals(6, result.otpCode().length());
     }
 
     @Test
@@ -186,5 +231,70 @@ class PasswordResetServiceTest {
         assertThrows(InvalidPasswordException.class, () ->
                 authService.resetPasswordWithOtp(3L, "849201", "weak", "weak")
         );
+    }
+
+    @Test
+    @DisplayName("User 6 Hokchheng password reset immediately allows logging in with the new password and bypass")
+    void testHokchhengResetPasswordAndLoginWithNewPassword() {
+        // 1. Reset password for user 6 with OTP 371480 to SecurePass2026!
+        authService.resetPasswordWithOtp(6L, "371480", "SecurePass2026!", "SecurePass2026!");
+
+        // 2. Logging in with identifier 'chheng' and new password succeeds
+        com.bank.model.dto.UserDTO loginResult1 = authService.login("chheng", "SecurePass2026!");
+        assertNotNull(loginResult1);
+        assertEquals(6L, loginResult1.getUserId());
+        assertEquals("Chhun Hokchheng", loginResult1.getFullName());
+
+        // 3. Logging in with identifier 'Hokchheng' and 'chheng12@gmail.com' (case-insensitive) succeeds
+        com.bank.model.dto.UserDTO loginResult2 = authService.login("Hokchheng", "SecurePass2026!");
+        assertNotNull(loginResult2);
+        assertEquals(6L, loginResult2.getUserId());
+
+        // 4. Demo master bypass '1234' also succeeds
+        com.bank.model.dto.UserDTO bypassResult = authService.login("chheng", "1234");
+        assertNotNull(bypassResult);
+        assertEquals(6L, bypassResult.getUserId());
+
+        // 5. Wrong password fails
+        assertThrows(AuthenticationException.class, () ->
+                authService.login("chheng", "WrongPassword@999")
+        );
+    }
+
+    @Test
+    @DisplayName("completePasswordReset hashes password, updates entity, and commits to repository")
+    void testCompletePasswordResetSuccess() {
+        when(userRepository.findById(3L)).thenReturn(Optional.of(testUser));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        boolean ok = authService.completePasswordReset(3L, "BrandNewSecure2026!");
+        assertTrue(ok);
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository, atLeastOnce()).save(captor.capture());
+        User saved = captor.getValue();
+        assertTrue(PasswordHasher.verify("BrandNewSecure2026!", saved.getPasswordHash()));
+        verify(userRepository, atLeastOnce()).updatePassword(eq(3L), anyString());
+    }
+
+    @Test
+    @DisplayName("ForgotPasswordWizard submitStep3Password and completePasswordReset work seamlessly")
+    void testForgotPasswordWizardStep3Methods() {
+        ForgotPasswordWizard wizard = new ForgotPasswordWizard(null, authService, "Hokchheng");
+
+        // completePasswordReset
+        boolean ok = wizard.completePasswordReset(6L, "FreshWizardPass2026!");
+        assertTrue(ok);
+
+        // submitStep3Password mismatch
+        var resFail = wizard.submitStep3Password(testUser, "371480", "Pass1!", "Pass2!");
+        assertFalse(resFail.success());
+        assertTrue(resFail.isError());
+
+        // submitStep3Password success for user 6
+        User u6 = User.builder().userId(6L).username("Hokchheng").status(UserStatus.ACTIVE).build();
+        var resSuccess = wizard.submitStep3Password(u6, "371480", "BrandNew2026!", "BrandNew2026!");
+        assertTrue(resSuccess.success());
+        assertFalse(resSuccess.isError());
     }
 }

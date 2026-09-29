@@ -57,9 +57,76 @@ public class ForgotPasswordWizard implements Screen {
     }
 
     public ForgotPasswordWizard(AuthController authController, String initialIdentifier) {
+        this(authController, ControllerFactory.getAuthService(), initialIdentifier);
+    }
+
+    public ForgotPasswordWizard(AuthController authController, AuthService authService, String initialIdentifier) {
         this.authController = authController;
-        this.authService = ControllerFactory.getAuthService();
+        this.authService = authService != null ? authService : ControllerFactory.getAuthService();
         this.initialIdentifier = initialIdentifier != null ? initialIdentifier : "";
+    }
+
+    public record Step1SubmissionResult(
+            boolean success,
+            User user,
+            String otpCode,
+            LocalDateTime expiresAt,
+            String maskedEmail,
+            String statusMessage,
+            boolean isError
+    ) {}
+
+    public record Step3SubmissionResult(
+            boolean success,
+            String statusMessage,
+            boolean isError
+    ) {}
+
+    public boolean completePasswordReset(Long userId, String rawPassword) {
+        if (authService != null) {
+            return authService.completePasswordReset(userId, rawPassword);
+        }
+        return false;
+    }
+
+    public Step3SubmissionResult submitStep3Password(User user, String otp, String p1, String p2) {
+        if (user == null || user.getUserId() == null) {
+            return new Step3SubmissionResult(false, "No target user specified for password reset.", true);
+        }
+        if (p1 == null || p1.isEmpty() || p2 == null || p2.isEmpty()) {
+            return new Step3SubmissionResult(false, "Please enter and confirm your new password.", true);
+        }
+        if (!p1.equals(p2)) {
+            return new Step3SubmissionResult(false, "Passwords do not match.", true);
+        }
+        var eval = PasswordValidator.evaluate(p1);
+        if (!eval.isValid()) {
+            return new Step3SubmissionResult(false, "Password does not meet required complexity standards.", true);
+        }
+        try {
+            authService.resetPasswordWithOtp(user.getUserId(), otp, p1, p2);
+            return new Step3SubmissionResult(true, "Password reset successfully. Please log in.", false);
+        } catch (Exception e) {
+            return new Step3SubmissionResult(false, "Reset failed: " + e.getMessage(), true);
+        }
+    }
+
+    public Step1SubmissionResult submitStep1Identifier(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return new Step1SubmissionResult(false, null, null, null, null, "Account identifier cannot be empty.", true);
+        }
+        String clean = input.trim();
+        try {
+            AuthService.PasswordResetInitiationResult res = authService.initiatePasswordReset(clean);
+            return new Step1SubmissionResult(true, res.user(), res.otpCode(), res.expiresAt(), res.maskedEmail(),
+                    "OTP dispatched successfully. Enter code to verify.", false);
+        } catch (Exception e) {
+            logger.error("Error initiating recovery for [{}]: {}", clean, e.getMessage(), e);
+            String msg = (e.getMessage() != null && !e.getMessage().isBlank())
+                    ? e.getMessage()
+                    : "No account registered with provided credentials.";
+            return new Step1SubmissionResult(false, null, null, null, null, msg, true);
+        }
     }
 
     @Override
@@ -144,14 +211,8 @@ public class ForgotPasswordWizard implements Screen {
                             return;
                         }
                         // Dispatch Recovery OTP
-                        String input = identifierBuf.toString().trim();
-                        if (input.isEmpty()) {
-                            statusMessage = "Account identifier cannot be empty.";
-                            isErrorStatus = true;
-                            continue;
-                        }
-                        try {
-                            AuthService.PasswordResetInitiationResult res = authService.initiatePasswordReset(input);
+                        Step1SubmissionResult res = submitStep1Identifier(identifierBuf.toString());
+                        if (res.success()) {
                             recoveryUser = res.user();
                             dispatchedOtp = res.otpCode();
                             otpExpiresAt = res.expiresAt();
@@ -159,22 +220,16 @@ public class ForgotPasswordWizard implements Screen {
                             lastDispatchTime = LocalDateTime.now();
                             currentStep = WizardStep.VERIFY_OTP;
                             otpInputBuf.setLength(0);
-                            statusMessage = "OTP dispatched successfully. Enter code to verify.";
+                            statusMessage = res.statusMessage();
                             isErrorStatus = false;
-                        } catch (Exception e) {
-                            statusMessage = "No account registered with provided credentials.";
+                        } else {
+                            statusMessage = res.statusMessage();
                             isErrorStatus = true;
                         }
                     } else if (event.action() == KeyAction.DIGIT && event.ch() == '1') {
                         step1ActionIdx = 0;
-                        String input = identifierBuf.toString().trim();
-                        if (input.isEmpty()) {
-                            statusMessage = "Account identifier cannot be empty.";
-                            isErrorStatus = true;
-                            continue;
-                        }
-                        try {
-                            AuthService.PasswordResetInitiationResult res = authService.initiatePasswordReset(input);
+                        Step1SubmissionResult res = submitStep1Identifier(identifierBuf.toString());
+                        if (res.success()) {
                             recoveryUser = res.user();
                             dispatchedOtp = res.otpCode();
                             otpExpiresAt = res.expiresAt();
@@ -182,10 +237,10 @@ public class ForgotPasswordWizard implements Screen {
                             lastDispatchTime = LocalDateTime.now();
                             currentStep = WizardStep.VERIFY_OTP;
                             otpInputBuf.setLength(0);
-                            statusMessage = "OTP dispatched successfully. Enter code to verify.";
+                            statusMessage = res.statusMessage();
                             isErrorStatus = false;
-                        } catch (Exception e) {
-                            statusMessage = "No account registered with provided credentials.";
+                        } else {
+                            statusMessage = res.statusMessage();
                             isErrorStatus = true;
                         }
                     } else if (event.action() == KeyAction.DIGIT && event.ch() == '2') {
@@ -246,6 +301,7 @@ public class ForgotPasswordWizard implements Screen {
                             }
                             boolean valid = authService.verifyOtp(recoveryUser.getUserId(), enteredCode);
                             if (valid) {
+                                dispatchedOtp = enteredCode;
                                 currentStep = WizardStep.RESET_CREDENTIALS;
                                 statusMessage = "OTP matched successfully. Press [1] to advance to password reset.";
                                 isErrorStatus = false;
@@ -291,6 +347,7 @@ public class ForgotPasswordWizard implements Screen {
                         String enteredCode = otpInputBuf.toString().trim();
                         boolean valid = authService.verifyOtp(recoveryUser.getUserId(), enteredCode);
                         if (valid) {
+                            dispatchedOtp = enteredCode;
                             currentStep = WizardStep.RESET_CREDENTIALS;
                             statusMessage = "OTP matched successfully. Press [1] to advance to password reset.";
                             isErrorStatus = false;
@@ -320,6 +377,25 @@ public class ForgotPasswordWizard implements Screen {
                         } else if (step3FocusedField == 1 && confirmPasswordBuf.length() > 0) {
                             confirmPasswordBuf.deleteCharAt(confirmPasswordBuf.length() - 1);
                         }
+                    } else if ((event.action() == KeyAction.DIGIT || event.action() == KeyAction.CHAR) && step3FocusedField == 2) {
+                        if (event.ch() == '1') {
+                            step3ActionIdx = 0;
+                            String p1 = newPasswordBuf.toString();
+                            String p2 = confirmPasswordBuf.toString();
+                            Step3SubmissionResult s3 = submitStep3Password(recoveryUser, dispatchedOtp, p1, p2);
+                            if (s3.success()) {
+                                terminal.setAttributes(origAttributes);
+                                navigator.clearAndPush(new LoginScreen());
+                                return;
+                            } else {
+                                statusMessage = s3.statusMessage();
+                                isErrorStatus = s3.isError();
+                            }
+                        } else if (event.ch() == '2') {
+                            terminal.setAttributes(origAttributes);
+                            navigator.pop();
+                            return;
+                        }
                     } else if (event.action() == KeyAction.CHAR || event.action() == KeyAction.DIGIT) {
                         if (step3FocusedField == 0 && newPasswordBuf.length() < 32) {
                             newPasswordBuf.append(event.ch());
@@ -327,46 +403,46 @@ public class ForgotPasswordWizard implements Screen {
                             confirmPasswordBuf.append(event.ch());
                         }
                     } else if (event.action() == KeyAction.ENTER) {
-                        if (step3FocusedField < 2) {
-                            step3FocusedField++;
+                        if (step3FocusedField == 0) {
+                            step3FocusedField = 1;
                             continue;
-                        }
-                        if (step3ActionIdx == 1) {
-                            terminal.setAttributes(origAttributes);
-                            navigator.pop();
-                            return;
-                        }
+                        } else if (step3FocusedField == 1) {
+                            if (newPasswordBuf.length() > 0 && confirmPasswordBuf.length() > 0) {
+                                String p1 = newPasswordBuf.toString();
+                                String p2 = confirmPasswordBuf.toString();
+                                Step3SubmissionResult s3 = submitStep3Password(recoveryUser, dispatchedOtp, p1, p2);
+                                if (s3.success()) {
+                                    terminal.setAttributes(origAttributes);
+                                    navigator.clearAndPush(new LoginScreen());
+                                    return;
+                                } else {
+                                    statusMessage = s3.statusMessage();
+                                    isErrorStatus = s3.isError();
+                                    continue;
+                                }
+                            } else {
+                                step3FocusedField = 2;
+                                continue;
+                            }
+                        } else if (step3FocusedField == 2) {
+                            if (step3ActionIdx == 1) {
+                                terminal.setAttributes(origAttributes);
+                                navigator.pop();
+                                return;
+                            }
 
-                        // Commit Password Change
-                        String p1 = newPasswordBuf.toString();
-                        String p2 = confirmPasswordBuf.toString();
-
-                        if (p1.isEmpty() || p2.isEmpty()) {
-                            statusMessage = "Please enter and confirm your new password.";
-                            isErrorStatus = true;
-                            continue;
-                        }
-                        if (!p1.equals(p2)) {
-                            statusMessage = "Passwords do not match.";
-                            isErrorStatus = true;
-                            continue;
-                        }
-
-                        var eval = PasswordValidator.evaluate(p1);
-                        if (!eval.isValid()) {
-                            statusMessage = "Password does not meet required complexity standards.";
-                            isErrorStatus = true;
-                            continue;
-                        }
-
-                        try {
-                            authService.resetPasswordWithOtp(recoveryUser.getUserId(), dispatchedOtp, p1, p2);
-                            terminal.setAttributes(origAttributes);
-                            navigator.clearAndPush(new LoginScreen());
-                            return;
-                        } catch (Exception e) {
-                            statusMessage = "Reset failed: " + e.getMessage();
-                            isErrorStatus = true;
+                            // Commit Password Change
+                            String p1 = newPasswordBuf.toString();
+                            String p2 = confirmPasswordBuf.toString();
+                            Step3SubmissionResult s3 = submitStep3Password(recoveryUser, dispatchedOtp, p1, p2);
+                            if (s3.success()) {
+                                terminal.setAttributes(origAttributes);
+                                navigator.clearAndPush(new LoginScreen());
+                                return;
+                            } else {
+                                statusMessage = s3.statusMessage();
+                                isErrorStatus = s3.isError();
+                            }
                         }
                     }
                 }
@@ -444,9 +520,9 @@ public class ForgotPasswordWizard implements Screen {
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
         String b0 = actionIdx == 0 ? "▸ " + ConsoleTheme.highlight("[1] Verify & Proceed") : "  [1] Verify & Proceed";
-        String b1 = actionIdx == 1 ? "▸ " + ConsoleTheme.highlight("[2] Resend OTP (Wait 60s)") : "  [2] Resend OTP (Wait 60s)";
+        String b1 = actionIdx == 1 ? "▸ " + ConsoleTheme.highlight("[2] Resend (60s)") : "  [2] Resend (60s)";
         String b2 = actionIdx == 2 ? "▸ " + ConsoleTheme.highlight("[3] Abort Recovery") : "  [3] Abort Recovery";
-        sb.append(TUIBox.line("  " + b0 + "    " + b1 + "    " + b2, width)).append("\n");
+        sb.append(TUIBox.line(" " + b0 + "      " + b1 + "      " + b2, width)).append("\n");
 
         sb.append(TUIBox.divider(width)).append("\n");
         if (statusMsg != null) {

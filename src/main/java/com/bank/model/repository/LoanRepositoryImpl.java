@@ -48,7 +48,25 @@ public class LoanRepositoryImpl implements LoanRepository {
     }
 
     @Override
+    public List<Loan> findPendingLoans() {
+        String sql = "SELECT * FROM loans WHERE status = 'PENDING' ORDER BY created_at ASC";
+        List<Loan> loans = new ArrayList<>();
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) loans.add(mapRow(rs));
+        } catch (SQLException e) {
+            throw new RuntimeException("Error finding pending loans", e);
+        }
+        return loans;
+    }
+
+    @Override
     public List<Loan> findByStatus(String status) {
+        if (LoanStatus.PENDING.name().equalsIgnoreCase(status)) {
+            return findPendingLoans();
+        }
         String sql = "SELECT * FROM loans WHERE status = ? ORDER BY created_at DESC";
         List<Loan> loans = new ArrayList<>();
         try (Connection conn = DatabaseConnection.getConnection();

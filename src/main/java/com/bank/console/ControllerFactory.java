@@ -28,9 +28,12 @@ public final class ControllerFactory {
     private static PasswordResetRepository passwordResetRepository;
     private static SavingGoalRepository savingGoalRepository;
     private static TransactionRepository transactionRepository;
+    private static NotificationRepository notificationRepository;
+    private static StaffRepository staffRepository;
 
-    // Services (19)
+    // Services (20)
     private static AuditLogService auditLogService;
+    private static NotificationService notificationService;
     private static FraudDetectionService fraudDetectionService;
     private static AccountService accountService;
     private static AuthenticationService authenticationService;
@@ -51,6 +54,7 @@ public final class ControllerFactory {
     private static FraudInvestigationService fraudInvestigationService;
     private static StatementReportService statementReportService;
     private static StatementExportService statementExportService;
+    private static PdfStatementService pdfStatementService;
     private static LiveCurrencyService liveCurrencyService;
 
     // Controllers (10)
@@ -93,14 +97,17 @@ public final class ControllerFactory {
         passwordResetRepository = new PasswordResetRepositoryImpl();
         savingGoalRepository = new SavingGoalRepositoryImpl();
         transactionRepository = new TransactionRepositoryImpl();
+        notificationRepository = new NotificationRepositoryImpl();
+        staffRepository = new StaffRepository();
 
         // 2. Services
         liveCurrencyService = new LiveCurrencyService();
         auditLogService = new AuditLogService(auditLogRepository);
+        notificationService = new NotificationService(notificationRepository);
         fraudDetectionService = new FraudDetectionService(fraudAlertRepository, transactionRepository);
         accountService = new AccountService(accountRepository, transactionRepository, fraudDetectionService, liveCurrencyService);
         authenticationService = new AuthenticationService(userRepository, adminRepository, accountService, auditLogService);
-        authService = new AuthService(userRepository, accountService, passwordResetRepository);
+        authService = new AuthService(userRepository, accountService, passwordResetRepository, adminRepository);
         adminAuthService = new AdminAuthService(adminRepository, auditLogService);
         transactionService = new TransactionService(transactionRepository, accountRepository);
         categoryService = new CategoryService(categoryRepository);
@@ -110,13 +117,14 @@ public final class ControllerFactory {
         dashboardService = new DashboardService(accountRepository, financialInsightsService, budgetService, savingGoalService);
         riskAssessmentService = new RiskAssessmentService();
         loanService = new LoanService(loanRepository, riskAssessmentService, loanPaymentRepository);
-        loanApprovalService = new LoanApprovalService(loanRepository, accountRepository, transactionRepository, auditLogService);
+        loanApprovalService = new LoanApprovalService(loanRepository, accountRepository, transactionRepository, auditLogService, notificationRepository);
         loanRepaymentService = new LoanRepaymentService(loanRepository, loanPaymentRepository, accountRepository, transactionRepository);
         currencyExchangeService = new CurrencyExchangeService(accountRepository, transactionRepository, liveCurrencyService);
         adminService = new AdminService(adminRepository, userRepository, accountRepository, transactionRepository, fraudAlertRepository, auditLogService);
         fraudInvestigationService = new FraudInvestigationService(fraudAlertRepository, accountRepository, auditLogRepository, auditLogService);
         statementExportService = new StatementExportService(transactionRepository);
         statementReportService = new StatementReportService(transactionRepository);
+        pdfStatementService = new PdfStatementService(accountRepository);
 
         // 3. Controllers
         authController = new AuthController(authenticationService, authService, adminAuthService);
@@ -126,7 +134,7 @@ public final class ControllerFactory {
         budgetController = new BudgetController(budgetService);
         categoryController = new CategoryController(categoryService);
         loanController = new LoanController(loanService, loanApprovalService, loanRepaymentService);
-        reportController = new ReportController(statementExportService, statementReportService);
+        reportController = new ReportController(statementExportService, statementReportService, pdfStatementService);
         savingGoalController = new SavingGoalController(savingGoalService);
         adminController = new AdminController(adminService, auditLogService, fraudInvestigationService);
 
@@ -253,6 +261,21 @@ public final class ControllerFactory {
         return loanApprovalService;
     }
 
+    public static synchronized NotificationService getNotificationService() {
+        ensureInitialized();
+        return notificationService;
+    }
+
+    public static synchronized PdfStatementService getPdfStatementService() {
+        ensureInitialized();
+        return pdfStatementService;
+    }
+
+    public static synchronized NotificationRepository getNotificationRepository() {
+        ensureInitialized();
+        return notificationRepository;
+    }
+
     public static synchronized LoanRepaymentService getLoanRepaymentService() {
         ensureInitialized();
         return loanRepaymentService;
@@ -336,5 +359,15 @@ public final class ControllerFactory {
     public static synchronized AuditLogRepository getAuditLogRepository() {
         ensureInitialized();
         return auditLogRepository;
+    }
+
+    public static synchronized StaffRepository getStaffRepository() {
+        ensureInitialized();
+        return staffRepository;
+    }
+
+    public static synchronized AdminRepository getAdminRepository() {
+        ensureInitialized();
+        return adminRepository;
     }
 }

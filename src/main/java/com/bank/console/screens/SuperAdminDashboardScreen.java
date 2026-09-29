@@ -3,6 +3,7 @@ package com.bank.console.screens;
 import com.bank.console.ControllerFactory;
 import com.bank.console.ScreenNavigator;
 import com.bank.console.TUISession;
+import com.bank.console.TerminalInputHandler;
 import com.bank.console.components.ScreenRenderer;
 import com.bank.console.components.TUIBox;
 import com.bank.console.components.TUIFormHelper;
@@ -84,18 +85,21 @@ public class SuperAdminDashboardScreen implements Screen {
         Attributes origAttributes = terminal.enterRawMode();
         NonBlockingReader reader = terminal.reader();
 
+        // Drain any lingering newline characters on entry
+        TerminalInputHandler.drainBuffer(reader);
+
         int selectedIndex = 0;
         int lastColumn = 0;
         String statusMessage = "Super Admin session active. All core banking modules nominal.";
         boolean isError = false;
         boolean firstRender = true;
-        boolean running = true;
+        boolean inScreen = true;
 
         // In-Memory Metric Caching
         RadarMetrics cachedMetrics = fetchRadarMetrics(admin);
 
         try {
-            while (running) {
+            while (inScreen) {
                 try {
                     String rendered = renderContent(adminDto, cachedMetrics.activeConn(), cachedMetrics.totalConn(),
                             cachedMetrics.openFraud(), cachedMetrics.pendingLoansCount(), cachedMetrics.totalUsers(),
@@ -103,77 +107,118 @@ public class SuperAdminDashboardScreen implements Screen {
                     ScreenRenderer.render(rendered, firstRender);
                     firstRender = false;
 
-                    KeyEvent event = TUIFormHelper.readKey(reader);
-                    if (event.action() == KeyAction.ESCAPE) {
-                        running = false;
-                        ControllerFactory.getAuthController().logoutAdmin();
-                        session.logout();
-                        navigator.clearAndPush(new WelcomeScreen());
-                        return;
-                    } else if (event.action() == KeyAction.UP || (event.action() == KeyAction.CHAR && (event.ch() == 'k' || event.ch() == 'K'))) {
-                        switch (selectedIndex) {
-                            case 0, 1 -> selectedIndex = 6;
-                            case 2 -> { selectedIndex = 0; lastColumn = 0; }
-                            case 3 -> { selectedIndex = 1; lastColumn = 1; }
-                            case 4 -> { selectedIndex = 2; lastColumn = 0; }
-                            case 5 -> { selectedIndex = 3; lastColumn = 1; }
-                            case 6 -> selectedIndex = (lastColumn == 0) ? 4 : 5;
+                    TerminalInputHandler.KeyCode event = TerminalInputHandler.readNavigationKey(reader);
+                    String key = event.asNormalizedKey();
+
+                    switch (key) {
+                        case "UP", "K" -> {
+                            switch (selectedIndex) {
+                                case 0, 1 -> selectedIndex = 6;
+                                case 2 -> { selectedIndex = 0; lastColumn = 0; }
+                                case 3 -> { selectedIndex = 1; lastColumn = 1; }
+                                case 4 -> { selectedIndex = 2; lastColumn = 0; }
+                                case 5 -> { selectedIndex = 3; lastColumn = 1; }
+                                case 6 -> selectedIndex = (lastColumn == 0) ? 4 : 5;
+                            }
                         }
-                    } else if (event.action() == KeyAction.DOWN || (event.action() == KeyAction.CHAR && (event.ch() == 'j' || event.ch() == 'J'))) {
-                        switch (selectedIndex) {
-                            case 0 -> { selectedIndex = 2; lastColumn = 0; }
-                            case 1 -> { selectedIndex = 3; lastColumn = 1; }
-                            case 2 -> { selectedIndex = 4; lastColumn = 0; }
-                            case 3 -> { selectedIndex = 5; lastColumn = 1; }
-                            case 4 -> { selectedIndex = 6; lastColumn = 0; }
-                            case 5 -> { selectedIndex = 6; lastColumn = 1; }
-                            case 6 -> selectedIndex = (lastColumn == 0) ? 0 : 1;
+                        case "DOWN", "J" -> {
+                            switch (selectedIndex) {
+                                case 0 -> { selectedIndex = 2; lastColumn = 0; }
+                                case 1 -> { selectedIndex = 3; lastColumn = 1; }
+                                case 2 -> { selectedIndex = 4; lastColumn = 0; }
+                                case 3 -> { selectedIndex = 5; lastColumn = 1; }
+                                case 4 -> { selectedIndex = 6; lastColumn = 0; }
+                                case 5 -> { selectedIndex = 6; lastColumn = 1; }
+                                case 6 -> selectedIndex = (lastColumn == 0) ? 0 : 1;
+                            }
                         }
-                    } else if (event.action() == KeyAction.LEFT || (event.action() == KeyAction.CHAR && (event.ch() == 'h' || event.ch() == 'H'))) {
-                        switch (selectedIndex) {
-                            case 1 -> { selectedIndex = 0; lastColumn = 0; }
-                            case 3 -> { selectedIndex = 2; lastColumn = 0; }
-                            case 5 -> { selectedIndex = 4; lastColumn = 0; }
-                            case 6 -> lastColumn = 0;
+                        case "LEFT", "H" -> {
+                            switch (selectedIndex) {
+                                case 1 -> { selectedIndex = 0; lastColumn = 0; }
+                                case 3 -> { selectedIndex = 2; lastColumn = 0; }
+                                case 5 -> { selectedIndex = 4; lastColumn = 0; }
+                                case 6 -> lastColumn = 0;
+                            }
                         }
-                    } else if (event.action() == KeyAction.RIGHT || (event.action() == KeyAction.CHAR && (event.ch() == 'l' || event.ch() == 'L'))) {
-                        switch (selectedIndex) {
-                            case 0 -> { selectedIndex = 1; lastColumn = 1; }
-                            case 2 -> { selectedIndex = 3; lastColumn = 1; }
-                            case 4 -> { selectedIndex = 5; lastColumn = 1; }
-                            case 6 -> lastColumn = 1;
+                        case "RIGHT", "L" -> {
+                            switch (selectedIndex) {
+                                case 0 -> { selectedIndex = 1; lastColumn = 1; }
+                                case 2 -> { selectedIndex = 3; lastColumn = 1; }
+                                case 4 -> { selectedIndex = 5; lastColumn = 1; }
+                                case 6 -> lastColumn = 1;
+                            }
                         }
-                    } else if (event.action() == KeyAction.CHAR && event.ch() >= '1' && event.ch() <= '6') {
-                        int chosen = event.ch() - '1';
-                        selectedIndex = chosen;
-                        lastColumn = chosen % 2;
-                        boolean navigated = executeAction(chosen, navigator, session, terminal, origAttributes);
-                        if (navigated) return;
-                        cachedMetrics = fetchRadarMetrics(admin);
-                        firstRender = true;
-                    } else if (event.action() == KeyAction.CHAR && event.ch() == '0') {
-                        selectedIndex = 6;
-                        boolean navigated = executeAction(6, navigator, session, terminal, origAttributes);
-                        if (navigated) return;
-                    } else if (event.action() == KeyAction.CHAR && event.ch() == '7') {
-                        String rptFile = generateRegulatoryReport();
-                        statusMessage = "Regulatory report generated: " + rptFile;
-                        isError = false;
-                    } else if (event.action() == KeyAction.CHAR && (event.ch() == 'r' || event.ch() == 'R')) {
-                        cachedMetrics = fetchRadarMetrics(admin);
-                        statusMessage = "System radar metrics synchronized with database.";
-                        isError = false;
-                    } else if (event.action() == KeyAction.ENTER) {
-                        boolean navigated = executeAction(selectedIndex, navigator, session, terminal, origAttributes);
-                        if (navigated) return;
-                        cachedMetrics = fetchRadarMetrics(admin);
-                        firstRender = true;
-                    } else if (event.action() == KeyAction.CHAR && (event.ch() == 'f' || event.ch() == 'F')) {
-                        running = false;
-                        FraudAlert targetAlert = (cachedMetrics.alerts() != null && !cachedMetrics.alerts().isEmpty())
-                                ? cachedMetrics.alerts().get(0) : null;
-                        navigator.push(new FraudInvestigationScreen(adminController, targetAlert));
-                        return;
+                        case "1" -> {
+                            selectedIndex = 0;
+                            lastColumn = 0;
+                            if (executeAction(0, navigator, session, terminal, origAttributes)) return;
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            firstRender = true;
+                        }
+                        case "2" -> {
+                            selectedIndex = 1;
+                            lastColumn = 1;
+                            if (executeAction(1, navigator, session, terminal, origAttributes)) return;
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            firstRender = true;
+                        }
+                        case "3" -> {
+                            selectedIndex = 2;
+                            lastColumn = 0;
+                            if (executeAction(2, navigator, session, terminal, origAttributes)) return;
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            firstRender = true;
+                        }
+                        case "4" -> {
+                            selectedIndex = 3;
+                            lastColumn = 1;
+                            if (executeAction(3, navigator, session, terminal, origAttributes)) return;
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            firstRender = true;
+                        }
+                        case "5" -> {
+                            selectedIndex = 4;
+                            lastColumn = 0;
+                            if (executeAction(4, navigator, session, terminal, origAttributes)) return;
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            firstRender = true;
+                        }
+                        case "6" -> {
+                            selectedIndex = 5;
+                            lastColumn = 1;
+                            if (executeAction(5, navigator, session, terminal, origAttributes)) return;
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            firstRender = true;
+                        }
+                        case "0", "ESC", "B" -> {
+                            selectedIndex = 6;
+                            if (executeAction(6, navigator, session, terminal, origAttributes)) return;
+                        }
+                        case "F" -> {
+                            inScreen = false;
+                            FraudAlert targetAlert = (cachedMetrics.alerts() != null && !cachedMetrics.alerts().isEmpty())
+                                    ? cachedMetrics.alerts().get(0) : null;
+                            navigator.push(new FraudTriageScreen(adminController, targetAlert));
+                            return;
+                        }
+                        case "ENTER" -> {
+                            if (executeAction(selectedIndex, navigator, session, terminal, origAttributes)) return;
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            firstRender = true;
+                        }
+                        case "7" -> {
+                            String rptFile = generateRegulatoryReport();
+                            statusMessage = "Regulatory report generated: " + rptFile;
+                            isError = false;
+                        }
+                        case "R" -> {
+                            cachedMetrics = fetchRadarMetrics(admin);
+                            statusMessage = "System radar metrics synchronized with database.";
+                            isError = false;
+                        }
+                        default -> {
+                            // Discard unmapped keys without exiting or breaking the loop
+                        }
                     }
                 } catch (Exception ex) {
                     logger.error("Super Admin dashboard error recovery", ex);
@@ -235,15 +280,15 @@ public class SuperAdminDashboardScreen implements Screen {
                 return true;
             }
             case 3 -> { // [4] Forensic Audit Trail
-                navigator.push(new AuditLogScreen(adminController));
+                navigator.push(new ForensicAuditTrailScreen(adminController));
                 return true;
             }
             case 4 -> { // [5] FX Engine & Settings
                 navigator.push(new FxConfigScreen(adminController));
                 return true;
             }
-            case 5 -> { // [6] Security & Credential Operations (Decoupled to StaffManagementScreen)
-                navigator.push(new StaffManagementScreen(adminController));
+            case 5 -> { // [6] Security & Credential Operations (Internal Staff Directory)
+                navigator.push(new InternalStaffDirectoryScreen(adminController));
                 return true;
             }
             case 6 -> { // [0] Sign Out & Terminate Session
@@ -389,14 +434,15 @@ public class SuperAdminDashboardScreen implements Screen {
 
         sb.append(TUIBox.emptyLine(width)).append("\n");
 
-        // Centered [0] Sign Out & Terminate Session
-        // 19 spaces + 2 prefix + 34 text + 19 spaces = 74 printable characters
+        // Align option [0] flush with options [1], [2], and [3] on all dashboards (no orphan indentation)
         boolean selSignOut = (selectedIndex == 6);
         String prefix0 = selSignOut ? "▸ " : "  ";
-        String signOutText = prefix0 + "[0] Sign Out & Terminate Session";
-        String centeredPlain = " ".repeat(19) + signOutText + " ".repeat(19);
-        String centeredRendered = selSignOut ? ("\033[7m" + centeredPlain + "\033[0m") : centeredPlain.replace("[0]", Ansi.yellow("[0]"));
-        sb.append(TUIBox.line("  " + centeredRendered, width)).append("\n");
+        String signOutPlain = prefix0 + "[0] Sign Out & Terminate Session";
+        if (selSignOut) {
+            sb.append(TUIBox.fullWidthInverted("  " + signOutPlain, width)).append("\n");
+        } else {
+            sb.append(TUIBox.line(" " + signOutPlain.replace("[0]", Ansi.yellow("[0]")), width)).append("\n");
+        }
 
         sb.append(TUIBox.emptyLine(width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
@@ -405,15 +451,15 @@ public class SuperAdminDashboardScreen implements Screen {
         if (statusMessage != null && statusMessage.startsWith("Status: ")) {
             statusMessage = statusMessage.substring(8);
         }
-        if (statusMessage != null && statusMessage.length() > 68) {
-            statusMessage = statusMessage.substring(0, 65) + "...";
+        if (statusMessage != null && statusMessage.length() > 70) {
+            statusMessage = statusMessage.substring(0, 67) + "...";
         }
         String statusDisplay = isError ? ConsoleTheme.error(statusMessage) : ConsoleTheme.muted(statusMessage);
         sb.append(TUIBox.line("Status: " + statusDisplay, width)).append("\n");
         sb.append(TUIBox.bottom(width)).append("\n");
 
         // Footer Hint
-        sb.append(ConsoleTheme.keyGuide("[↑/↓/←/→] Navigate  •  [1-6, 0] Hotkey  •  [Enter] Execute  •  [Esc] Quick Exit")).append("\n");
+        sb.append(ConsoleTheme.keyGuide("[↑/↓/←/→] Navigate • [1-6, 0] Menu • [F] Alert • [Enter] Open • [Esc] Exit")).append("\n");
 
         return sb.toString();
     }

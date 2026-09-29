@@ -26,4 +26,11 @@ public class Admin {
     private String securityAnswerHash;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    @Builder.Default
+    private Integer failedLoginAttempts = 0;
+    private LocalDateTime lastLoginAt;
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts != null ? failedLoginAttempts : 0;
+    }
 }

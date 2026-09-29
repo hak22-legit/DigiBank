@@ -17,12 +17,14 @@ import com.bank.model.BudgetView;
 import com.bank.model.dto.AccountDTO;
 import com.bank.model.dto.LoanDTO;
 import com.bank.model.dto.UserDTO;
+import com.bank.model.entity.Notification;
 import com.bank.model.entity.SavingGoal;
 import com.bank.model.entity.User;
 import com.bank.model.enums.Currency;
 import com.bank.model.enums.GoalStatus;
 import com.bank.model.enums.LoanStatus;
 import com.bank.security.SessionManager;
+import com.bank.service.NotificationService;
 import com.bank.ui.Ansi;
 import com.bank.console.components.TUIFormHelper;
 import com.bank.console.components.TUIFormHelper.KeyAction;
@@ -48,6 +50,7 @@ public class CustomerDashboardScreen implements Screen {
     private final BudgetController budgetController;
     private final SavingGoalController savingGoalController;
     private final LoanController loanController;
+    private final NotificationService notificationService;
 
     private String statusMessage = null;
 
@@ -68,11 +71,12 @@ public class CustomerDashboardScreen implements Screen {
             "[0] Back to Main Navigation"
     };
 
-    private record DashboardData(
+    public record DashboardData(
             List<AccountDTO> accounts,
             String loansOverview,
             String goalsOverview,
-            String budgetOverview
+            String budgetOverview,
+            Notification activeAlert
     ) {}
 
     public CustomerDashboardScreen() {
@@ -80,7 +84,8 @@ public class CustomerDashboardScreen implements Screen {
              ControllerFactory.getFinancialController(),
              ControllerFactory.getBudgetController(),
              ControllerFactory.getSavingGoalController(),
-             ControllerFactory.getLoanController());
+             ControllerFactory.getLoanController(),
+             ControllerFactory.getNotificationService());
     }
 
     public CustomerDashboardScreen(AccountController accountController,
@@ -88,11 +93,21 @@ public class CustomerDashboardScreen implements Screen {
                                    BudgetController budgetController,
                                    SavingGoalController savingGoalController,
                                    LoanController loanController) {
+        this(accountController, financialController, budgetController, savingGoalController, loanController, ControllerFactory.getNotificationService());
+    }
+
+    public CustomerDashboardScreen(AccountController accountController,
+                                   FinancialController financialController,
+                                   BudgetController budgetController,
+                                   SavingGoalController savingGoalController,
+                                   LoanController loanController,
+                                   NotificationService notificationService) {
         this.accountController = accountController;
         this.financialController = financialController;
         this.budgetController = budgetController;
         this.savingGoalController = savingGoalController;
         this.loanController = loanController;
+        this.notificationService = notificationService;
     }
 
     public void setStatusMessage(String statusMessage) {
@@ -155,7 +170,15 @@ public class CustomerDashboardScreen implements Screen {
             }
         } catch (Exception ignored) {}
 
-        return new DashboardData(accounts, loansOverview, goalsOverview, budgetOverview);
+        // Active Alert / Notification
+        Notification activeAlert = null;
+        try {
+            if (notificationService != null && userEntity != null && userEntity.getUserId() != null) {
+                activeAlert = notificationService.getLatestUnreadNotification(userEntity.getUserId()).orElse(null);
+            }
+        } catch (Exception ignored) {}
+
+        return new DashboardData(accounts, loansOverview, goalsOverview, budgetOverview, activeAlert);
     }
 
     @Override
@@ -341,8 +364,14 @@ public class CustomerDashboardScreen implements Screen {
 
     private void renderScreen(TUISession session, UserDTO userDto, DashboardData data,
                               int selectedIndex, boolean inCashSubMenu, int cashSubIndex, boolean firstRender) {
+        String rendered = renderContent(userDto, data, selectedIndex, inCashSubMenu, cashSubIndex, statusMessage, TUILayout.APP_WIDTH);
+        ScreenRenderer.render(rendered, firstRender);
+    }
+
+    public static String renderContent(UserDTO userDto, DashboardData data,
+                                       int selectedIndex, boolean inCashSubMenu, int cashSubIndex,
+                                       String statusMessage, int width) {
         StringBuilder sb = new StringBuilder();
-        int width = TUILayout.APP_WIDTH;
         DecimalFormat df = new DecimalFormat("#,##0.00");
         DecimalFormat intFormat = new DecimalFormat("#,##0");
 
@@ -355,13 +384,25 @@ public class CustomerDashboardScreen implements Screen {
         sb.append(TUIBox.line(ConsoleTheme.primary(headerTitle), width)).append("\n");
         sb.append(TUIBox.divider(width)).append("\n");
 
+        // Announcement / Alert Banner
+        if (data != null && data.activeAlert() != null) {
+            String title = data.activeAlert().getTitle() != null ? data.activeAlert().getTitle() : "Alert";
+            String msg = data.activeAlert().getMessage() != null ? data.activeAlert().getMessage() : "";
+            String bannerText = " 🔔 " + ConsoleTheme.error("ALERT: ") + title + " — " + msg;
+            if (TUIBox.visibleLength(bannerText) > 76) {
+                bannerText = bannerText.substring(0, 73) + "...";
+            }
+            sb.append(TUIBox.line(bannerText, width)).append("\n");
+            sb.append(TUIBox.divider(width)).append("\n");
+        }
+
         // 1. MY ACCOUNTS
         sb.append(TUIBox.twoColumns("MY ACCOUNTS", "[+] OPEN ACCOUNT", width)).append("\n");
         sb.append(TUIBox.emptyLine(width)).append("\n");
         sb.append(TUIBox.line("  ACCOUNT NUMBER   TYPE       CURRENCY         BALANCE   STATUS", width)).append("\n");
         sb.append(TUIBox.line(" " + "─".repeat(77), width)).append("\n");
 
-        List<AccountDTO> accounts = data.accounts();
+        List<AccountDTO> accounts = data != null ? data.accounts() : null;
         if (accounts == null || accounts.isEmpty()) {
             sb.append(TUIBox.line("  No active accounts registered.", width)).append("\n");
         } else {
@@ -399,9 +440,12 @@ public class CustomerDashboardScreen implements Screen {
         // 2. FINANCIAL OVERVIEW
         sb.append(TUIBox.line("FINANCIAL OVERVIEW", width)).append("\n");
         sb.append(TUIBox.emptyLine(width)).append("\n");
-        sb.append(TUIBox.line("  Active Loans  : " + Ansi.cyan(data.loansOverview()), width)).append("\n");
-        sb.append(TUIBox.line("  Savings Goals : " + Ansi.cyan(data.goalsOverview()), width)).append("\n");
-        sb.append(TUIBox.line("  Monthly Budget: " + Ansi.cyan(data.budgetOverview()), width)).append("\n");
+        String loans = data != null ? data.loansOverview() : "0 Loans";
+        String goals = data != null ? data.goalsOverview() : "0 Goals";
+        String budget = data != null ? data.budgetOverview() : "$0.00 spent";
+        sb.append(TUIBox.line("  Active Loans  : " + Ansi.cyan(loans), width)).append("\n");
+        sb.append(TUIBox.line("  Savings Goals : " + Ansi.cyan(goals), width)).append("\n");
+        sb.append(TUIBox.line("  Monthly Budget: " + Ansi.cyan(budget), width)).append("\n");
 
         sb.append(TUIBox.divider(width)).append("\n");
 
@@ -440,8 +484,15 @@ public class CustomerDashboardScreen implements Screen {
         String currentStatus;
         if (inCashSubMenu) {
             currentStatus = (statusMessage != null) ? statusMessage : "Select cash operation. Press [1] for deposit or [2] for withdrawal.";
+        } else if (statusMessage != null) {
+            currentStatus = statusMessage;
+        } else if (data != null && data.activeAlert() != null) {
+            currentStatus = "Alert: " + data.activeAlert().getMessage();
+            if (TUIBox.visibleLength(currentStatus) > 68) {
+                currentStatus = currentStatus.substring(0, 65) + "...";
+            }
         } else {
-            currentStatus = (statusMessage != null) ? statusMessage : "Ready. All accounts operational.";
+            currentStatus = "Ready. All accounts operational.";
         }
         sb.append(TUIBox.line("Status: " + currentStatus, width)).append("\n");
 
@@ -452,7 +503,7 @@ public class CustomerDashboardScreen implements Screen {
             sb.append(ConsoleTheme.keyGuide("[↑/↓/←/→] Navigate  •  [1-8, 0] Quick Hotkey  •  [Enter] Select  •  [Esc] Logout")).append("\n");
         }
 
-        ScreenRenderer.render(sb.toString(), firstRender);
+        return sb.toString();
     }
 
     public void executeAction(int choice, ScreenNavigator navigator, TUISession session) {

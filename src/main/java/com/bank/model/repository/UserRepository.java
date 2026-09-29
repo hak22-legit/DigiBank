@@ -16,4 +16,30 @@ public interface UserRepository {
 
     List<UserDirectoryItem> findUserDirectorySummary(int offset, int limit);
     long countUsers();
+
+    default Optional<User> findByUsernameIgnoreCaseOrEmailIgnoreCase(String username, String email) {
+        if (username != null && !username.isBlank()) {
+            Optional<User> byUser = findByUsername(username.trim());
+            if (byUser.isPresent()) return byUser;
+            for (User u : findAll()) {
+                if (u.getUsername() != null && u.getUsername().equalsIgnoreCase(username.trim())) {
+                    return Optional.of(u);
+                }
+            }
+        }
+        if (email != null && !email.isBlank()) {
+            Optional<User> byEmail = findByEmail(email.trim().toLowerCase());
+            if (byEmail.isPresent()) return byEmail;
+            for (User u : findAll()) {
+                if (u.getEmail() != null && u.getEmail().equalsIgnoreCase(email.trim())) {
+                    return Optional.of(u);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    default boolean updatePassword(Long userId, String newPasswordHash) {
+        return false;
+    }
 }
